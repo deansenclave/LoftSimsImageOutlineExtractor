@@ -27,6 +27,6 @@ function hit(a,b){return a.x<b.x+b.w+5&&a.x+a.w+5>b.x&&a.y<b.y+b.h+5&&a.y+a.h+5>
 function top(c){return Math.min(...c.map(p=>p.y))}function bottom(c){return Math.max(...c.map(p=>p.y))}function left(c){return Math.min(...c.map(p=>p.x))}function right(c){return Math.max(...c.map(p=>p.x))}
 function blur(src){const d=new Float32Array(src.length);for(let y=0;y<H;y++)for(let x=0;x<W;x++){let s=0,n=0;for(let yy=Math.max(0,y-1);yy<=Math.min(H-1,y+1);yy++)for(let xx=Math.max(0,x-1);xx<=Math.min(W-1,x+1);xx++){s+=src[yy*W+xx];n++}d[y*W+x]=s/n}return d}
 function show(){output.style.display='block';$('outputEmpty').style.display='none'}
-download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.1-tracing-sheet.png';a.href=output.toDataURL('image/png');a.click()};
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.8-tracing-sheet.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(m,e=false){status.textContent=m;status.className='status'+(e?' error':'')}
-setStatus('Application ready · v0.3.4 JavaScript loaded. Choose a picture.');
+setStatus('Application ready · v0.3.8 JavaScript loaded. Choose a picture.');
