@@ -29,3 +29,4 @@ function blur(src){const d=new Float32Array(src.length);for(let y=0;y<H;y++)for(
 function show(){output.style.display='block';$('outputEmpty').style.display='none'}
 download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.1-tracing-sheet.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(m,e=false){status.textContent=m;status.className='status'+(e?' error':'')}
+setStatus('Application ready · v0.3.4 JavaScript loaded. Choose a picture.');
