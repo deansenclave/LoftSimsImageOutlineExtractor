@@ -1,26 +1,23 @@
 # LoftSims Image Outline Extractor
 
-**Version 0.1.0**
+**Version 0.2.0**
 
-Browser-native image outline extraction with a focused contract:
+**Picture → outline → continuous pen path**
 
-**Picture in → outlines out**
+## v0.2.0
+- Preserves the working v0.1.0 JPG/PNG/WebP outline extraction.
+- Adds **Build single-line path**.
+- Samples detected outline points and orders them into one continuous route.
+- The rendered route is one uninterrupted stroke: no pen-up operation.
+- Disconnected outline regions are joined by travel strokes; existing regions may be retraced where needed.
+- Downloads the single-line result as PNG.
+- Entirely browser-native: HTML / CSS / JavaScript / Canvas.
 
-## v0.1.0
-- Accepts JPG, PNG and WebP.
-- Displays the original picture.
-- Converts pixels to grayscale and optionally smooths noise.
-- Uses Sobel gradient magnitude to identify visible boundaries.
-- Adjustable sensitivity, smoothing and line thickness.
-- Produces a black-on-white outline picture.
-- Downloads the result as PNG.
-- Processing stays in the browser; no image upload service is required.
+## v0.1.0 baseline
+Grayscale conversion, smoothing, Sobel gradient outline detection, adjustable sensitivity/line thickness, and PNG output.
 
 ## Run
 Open `index.html` in a modern browser. No Python, package manager, build process or server is required.
 
-## Stack
-HTML / CSS / JavaScript / Canvas
-
-## Next validation
-Test against photographs, drawings, objects, faces and mixed scenes, then distinguish meaningful structural outlines from texture/noise before expanding into SVG/geometry reconstruction.
+## Validation note
+v0.2.0 establishes the no-pen-lift path mechanism. Visual validation on different photographs is the next step; path quality and connector minimization can then be refined without changing the v0.1.0 extractor baseline.
