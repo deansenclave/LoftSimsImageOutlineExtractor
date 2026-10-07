@@ -1,6 +1,40 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LoftSims Image Outline Extractor</title><link rel="stylesheet" href="style.css"></head><body>
-<header><div><h1>LoftSims Image Outline Extractor</h1><p>Picture → clean outline → ordered tracing sheet</p></div><span>v0.3.4</span></header><main><section class="controls">
+<header><div><h1>LoftSims Image Outline Extractor</h1><p>Picture → clean outline → ordered tracing sheet</p></div><span>v0.3.5</span></header><main><section class="controls">
 <label class="upload">Choose picture<input id="file" type="file" accept="image/png,image/jpeg,image/webp"></label><label>Sensitivity <input id="threshold" type="range" min="20" max="220" value="80"><output id="thresholdValue">80</output></label><label>Smoothing <input id="blur" type="range" min="0" max="4" value="1"><output id="blurValue">1</output></label><label>Line thickness <input id="thickness" type="range" min="1" max="4" value="1"><output id="thicknessValue">1</output></label>
 <button id="extract" disabled>Extract outlines</button><button id="geometry" disabled>Build tracing sheet</button><button id="download" disabled>Download PNG</button></section>
 <section class="workspace"><article><h2>Original</h2><canvas id="source"></canvas><p id="sourceEmpty">Choose a JPG, PNG or WebP image.</p></article><article><h2>Ordered tracing sheet</h2><canvas id="output"></canvas><p id="outputEmpty">The clean outline and tracing labels will appear here.</p></article></section><p class="status" id="status" role="status">Ready.</p></main>
-<footer>LoftSims · v0.3.4 · Client-side processing · Your picture stays in your browser</footer><script src="app.js?v=0.3.4"></script></body></html>
+<footer>LoftSims · v0.3.5 · Client-side processing · Your picture stays in your browser</footer><script>
+const $=id=>document.getElementById(id),file=$('file'),source=$('source'),output=$('output'),extract=$('extract'),geometry=$('geometry'),download=$('download'),status=$('status');
+let loaded=false,edge=null,W=0,H=0,components=[];
+for(const id of ['threshold','blur','thickness'])$(id).oninput=e=>$(id+'Value').value=e.target.value;
+file.addEventListener('change',()=>{
+ const f=file.files[0]; if(!f)return;
+ if(!/^image\/(png|jpeg|webp)$/.test(f.type)){setStatus('Unsupported image type.',true);return}
+ const img=new Image(); img.onload=()=>{
+  const max=1600,scale=Math.min(1,max/Math.max(img.width,img.height));
+  W=source.width=Math.round(img.width*scale);H=source.height=Math.round(img.height*scale);
+  source.getContext('2d').drawImage(img,0,0,W,H);
+  source.style.display='block';$('sourceEmpty').style.display='none';loaded=true;extract.disabled=false;geometry.disabled=download.disabled=true;
+  setStatus('Picture loaded. Select Extract outlines.');
+  URL.revokeObjectURL(img.src);
+ };img.src=URL.createObjectURL(f);
+});
+extract.onclick=()=>{if(!loaded)return;const px=source.getContext('2d').getImageData(0,0,W,H).data;let g=new Float32Array(W*H);for(let i=0,p=0;i<px.length;i+=4,p++)g[p]=.299*px[i]+.587*px[i+1]+.114*px[i+2];for(let k=0;k<+$('blur').value;k++)g=blur(g);edge=new Uint8Array(W*H);const t=+$('threshold').value;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,gx=-g[i-W-1]+g[i-W+1]-2*g[i-1]+2*g[i+1]-g[i+W-1]+g[i+W+1],gy=-g[i-W-1]-2*g[i-W]-g[i-W+1]+g[i+W-1]+2*g[i+W]+g[i+W+1];edge[i]=Math.hypot(gx,gy)>=t}renderRaw();geometry.disabled=false;download.disabled=false;setStatus('Clean outline extracted. Build the tracing sheet.')};
+function renderRaw(){output.width=W;output.height=H;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,W,H);o.fillStyle='black';for(let i=0;i<edge.length;i++)if(edge[i])o.fillRect(i%W,Math.floor(i/W),1,1);show()}
+geometry.onclick=()=>{components=findComponents().filter(c=>c.length>=Math.max(20,W*H/150000)).sort((a,b)=>top(a)-top(b)||left(a)-left(b));renderSheet();};
+function findComponents(){const seen=new Uint8Array(edge.length),out=[],dirs=[-1,1,-W,W,-W-1,-W+1,W-1,W+1];for(let i=0;i<edge.length;i++)if(edge[i]&&!seen[i]){const q=[i],c=[];seen[i]=1;while(q.length){const a=q.pop();c.push({x:a%W,y:Math.floor(a/W)});for(const d of dirs){const b=a+d;if(b>=0&&b<edge.length&&edge[b]&&!seen[b]&&Math.abs(b%W-a%W)<=1){seen[b]=1;q.push(b)}}}out.push(c)}return out}
+function renderSheet(){const scale=2.5,pad=Math.round(Math.max(W,H)*.12),cw=Math.round(W*scale+pad*2),ch=Math.round(H*scale+pad*2);output.width=cw;output.height=ch;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,cw,ch);o.strokeStyle='black';o.fillStyle='black';o.lineWidth=Math.max(1,+$('thickness').value*scale*.65);o.lineCap='round';for(let i=0;i<edge.length;i++)if(edge[i]){const x=pad+(i%W)*scale,y=pad+Math.floor(i/W)*scale;o.fillRect(x,y,Math.max(1,o.lineWidth),Math.max(1,o.lineWidth))}
+const boxes=[];components.forEach((c,n)=>{const pts=sampleContour(c,needsSubdivisions(c)?4:1);pts.forEach((p,k)=>placeLabel(o,{x:pad+p.x*scale,y:pad+p.y*scale},String(n+1)+(pts.length>1?String.fromCharCode(97+k):''),boxes,cw,ch,pad));});show();download.disabled=false;setStatus(components.length+' independent contours sequenced. Labels are offset from the drawing on a '+cw+'×'+ch+' tracing sheet.')}
+function sampleContour(c,count){const ordered=order(c);if(count===1)return[ordered[0]];return Array.from({length:count},(_,k)=>ordered[Math.round(k*(ordered.length-1)/(count-1))])}
+function order(c){const pts=c.slice(),start=pts.reduce((a,b)=>b.x<a.x?b:a),used=new Set(),path=[start];used.add(start);let cur=start;while(path.length<pts.length){let best=null,bd=Infinity;for(const p of pts)if(!used.has(p)){const d=(p.x-cur.x)**2+(p.y-cur.y)**2;if(d<bd){bd=d;best=p}}if(!best)break;used.add(best);path.push(best);cur=best}return path}
+function needsSubdivisions(c){const w=right(c)-left(c)+1,h=bottom(c)-top(c)+1;return c.length>80&&w>12&&h>12}
+function placeLabel(o,p,text,boxes,cw,ch,pad){const font=Math.max(16,Math.round(Math.min(cw,ch)/75));o.font='bold '+font+'px Arial';const tw=o.measureText(text).width+12,th=font+10,dirs=[[0,-34],[34,0],[0,34],[-34,0],[48,-48],[-48,-48],[48,48],[-48,48]];let box=null;for(let ring=1;ring<=8&&!box;ring++)for(const d of dirs){const x=Math.max(4,Math.min(cw-tw-4,p.x+d[0]*ring)),y=Math.max(th,Math.min(ch-4,p.y+d[1]*ring)),b={x:x-tw/2,y:y-th/2,w:tw,h:th};if(!boxes.some(q=>hit(b,q))){box=b;break}}if(!box)box={x:p.x+20,y:p.y-30,w:tw,h:th};boxes.push(box);const lx=box.x+box.w/2,ly=box.y+box.h/2;o.strokeStyle='#777';o.lineWidth=1;o.beginPath();o.moveTo(p.x,p.y);o.lineTo(lx,ly);o.stroke();o.fillStyle='white';o.fillRect(box.x,box.y,box.w,box.h);o.strokeStyle='#bbb';o.strokeRect(box.x,box.y,box.w,box.h);o.fillStyle='black';o.textAlign='center';o.textBaseline='middle';o.fillText(text,lx,ly)}
+function hit(a,b){return a.x<b.x+b.w+5&&a.x+a.w+5>b.x&&a.y<b.y+b.h+5&&a.y+a.h+5>b.y}
+function top(c){return Math.min(...c.map(p=>p.y))}function bottom(c){return Math.max(...c.map(p=>p.y))}function left(c){return Math.min(...c.map(p=>p.x))}function right(c){return Math.max(...c.map(p=>p.x))}
+function blur(src){const d=new Float32Array(src.length);for(let y=0;y<H;y++)for(let x=0;x<W;x++){let s=0,n=0;for(let yy=Math.max(0,y-1);yy<=Math.min(H-1,y+1);yy++)for(let xx=Math.max(0,x-1);xx<=Math.min(W-1,x+1);xx++){s+=src[yy*W+xx];n++}d[y*W+x]=s/n}return d}
+function show(){output.style.display='block';$('outputEmpty').style.display='none'}
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.1-tracing-sheet.png';a.href=output.toDataURL('image/png');a.click()};
+function setStatus(m,e=false){status.textContent=m;status.className='status'+(e?' error':'')}
+setStatus('Application ready · v0.3.5 JavaScript loaded. Choose a picture.');
+
+</script></body></html>
