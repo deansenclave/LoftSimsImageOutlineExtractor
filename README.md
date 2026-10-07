@@ -1,28 +1,24 @@
 # LoftSims Image Outline Extractor
 
-**Version 0.3.0**
+**Version 0.3.1**
 
-**Picture → outlines → unique contours → geometric transitions → drawing instructions**
+## v0.3.1 — ordered tracing sheet
+v0.3.0 visual validation showed that placing every detected geometric label directly on the source-sized outline made the result unreadable.
 
-## v0.3.0
-This version replaces the arbitrary v0.2.1 checkpoint-count model with geometry-derived labeling based on the supplied examples.
-
-- Detects connected/unique outline contours.
-- Traces each contour and simplifies small pixel fluctuations.
-- Detects major direction changes as geometric transition points.
-- Straight runs remain unsplit unless their geometry changes.
-- Detects curved runs separately.
-- Each detected curved run receives four ordered reference points **a, b, c, d**, defining **AB, BC, CD** portions.
-- Major contour transition points receive sequential numeric labels.
-- Exports the annotated geometry as PNG.
+v0.3.1 changes the output model:
+- Builds a high-resolution tracing canvas at 2.5× source scale plus outer annotation margin.
+- Keeps the outline itself visually clean.
+- Sequences independent contours numerically: 1, 2, 3…
+- Complex contours receive belonging alphabetical trace references: 1a, 1b, 1c, 1d; 2a, 2b…
+- Labels are offset from the contour and connected to their exact trace location by leader lines.
+- Includes collision avoidance so annotation boxes do not overwrite each other.
+- Downloaded PNG retains full tracing-sheet resolution even when the browser preview is visually scaled.
 
 ## Version history
-- **v0.2.1** — arbitrary numbered checkpoints (superseded by geometry-derived segmentation).
-- **v0.2.0** — continuous no-pen-lift path generation.
-- **v0.1.0** — browser-native image outline extraction.
+- **v0.3.0** — first geometry-derived analysis; retained as a validation baseline.
+- **v0.2.1** — arbitrary numbered checkpoints.
+- **v0.2.0** — continuous path experiment.
+- **v0.1.0** — browser-native outline extraction.
 
 ## Run
-Open `index.html` in a modern browser. No Python, package manager, build process or server is required.
-
-## Validation
-v0.3.0 is the first geometry-derived implementation. The supplied hand-drawn examples define the intended behavior; visual validation will determine threshold refinements for corner-vs-curve classification.
+Open `index.html` in a modern browser. No Python or build process is required.
