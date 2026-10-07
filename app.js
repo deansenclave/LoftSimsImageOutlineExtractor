@@ -19,20 +19,59 @@ function buildContinuousPath(){if(!edge)return;setStatus('Building continuous pe
  pathPoints=path;trace.disabled=false;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,W,H);o.strokeStyle='black';o.lineWidth=Math.max(1,+$('thickness').value);o.lineCap='round';o.lineJoin='round';o.beginPath();o.moveTo(path[0].x,path[0].y);for(let i=1;i<path.length;i++)o.lineTo(path[i].x,path[i].y);o.stroke();
  o.fillStyle='black';o.beginPath();o.arc(path[0].x,path[0].y,4,0,Math.PI*2);o.fill();setStatus('Single continuous path generated: '+path.length+' sampled outline points, with connecting/retraced travel where required.');download.disabled=false}
 
-trace.onclick=()=>{if(!pathPoints||!pathPoints.length)return;const path=pathPoints,scale=2,pad=80;
- output.width=W*scale+pad*2;output.height=H*scale+pad*2;
+// Segment detector: maximal straight runs in four principal pixel directions.
+// Curved contours are approximated by successive short directional runs.
+function detectSegments(){
+ const dirs=[[1,0],[0,1],[1,1],[1,-1]],out=[],minLength=5;
+ for(const [dx,dy] of dirs){
+  const visited=new Uint8Array(edge.length);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+   const i=y*W+x;if(!edge[i]||visited[i])continue;
+   const px=x-dx,py=y-dy;
+   if(px>=0&&px<W&&py>=0&&py<H&&edge[py*W+px])continue;
+   let xx=x,yy=y,len=0;
+   while(xx>=0&&xx<W&&yy>=0&&yy<H&&edge[yy*W+xx]&&!visited[yy*W+xx]){
+    visited[yy*W+xx]=1;len++;xx+=dx;yy+=dy;
+   }
+   if(len>=minLength)out.push({x:x+(len-1)*dx/2,y:y+(len-1)*dy/2,len,dx,dy});
+  }
+ }
+ return out.sort((a,b)=>Math.floor(a.y/28)-Math.floor(b.y/28)||a.x-b.x);
+}
+trace.onclick=()=>{
+ if(!edge)return;
+ const segments=detectSegments(),scale=4,pad=120;
+ output.width=W*scale+2*pad;output.height=H*scale+2*pad;
  const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,output.width,output.height);
- o.strokeStyle='black';o.lineWidth=Math.max(1,+$('thickness').value*scale);o.beginPath();
- o.moveTo(pad+path[0].x*scale,pad+path[0].y*scale);
- for(let i=1;i<path.length;i++)o.lineTo(pad+path[i].x*scale,pad+path[i].y*scale);o.stroke();
- const marks=Math.min(20,Math.max(2,Math.ceil(path.length/500)));
- o.font='bold 18px Arial';o.textAlign='center';o.textBaseline='middle';
- for(let n=0;n<marks;n++){const p=path[Math.round(n*(path.length-1)/Math.max(1,marks-1))];
-  const x=pad+p.x*scale,y=pad+p.y*scale,offset=n%2?38:-38,ly=Math.max(18,Math.min(output.height-18,y+offset));
-  o.strokeStyle='#888';o.lineWidth=1;o.beginPath();o.moveTo(x,y);o.lineTo(x,ly);o.stroke();
-  o.fillStyle='white';o.fillRect(x-19,ly-13,38,26);o.fillStyle='black';o.fillText(String(n+1),x,ly)}
- setStatus('Tracing plan: '+marks+' ordered labels. This is a preliminary path-order visualization, not independent contour recognition.');
+ o.fillStyle='black';const width=Math.max(1,+$('thickness').value*scale);
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(edge[y*W+x])o.fillRect(pad+x*scale,pad+y*scale,width,width);
+ const occupied=new Set(),font=20,cell=34,cols=Math.ceil(output.width/cell),rows=Math.ceil(output.height/cell);
+ o.font='bold '+font+'px Arial';o.textAlign='center';o.textBaseline='middle';
+ let labeled=0;
+ for(const seg of segments){
+  const ax=pad+seg.x*scale,ay=pad+seg.y*scale;
+  let found=null;
+  for(let ring=2;ring<20&&!found;ring++){
+   for(let k=0;k<16;k++){
+    const angle=k*Math.PI/8,cx=Math.round(ax/cell+ring*Math.cos(angle)),cy=Math.round(ay/cell+ring*Math.sin(angle));
+    if(cx<1||cy<1||cx>=cols-1||cy>=rows-1)continue;
+    const key=cy*cols+cx;
+    if(occupied.has(key))continue;
+    const lx=cx*cell,ly=cy*cell;
+    const ix=Math.max(0,Math.min(W-1,Math.round((lx-pad)/scale))),iy=Math.max(0,Math.min(H-1,Math.round((ly-pad)/scale)));
+    if(edge[iy*W+ix])continue;
+    found={lx,ly,key};break;
+   }
+  }
+  if(!found)continue;
+  occupied.add(found.key);labeled++;
+  o.strokeStyle='#777';o.lineWidth=1;o.beginPath();o.moveTo(ax,ay);o.lineTo(found.lx,found.ly);o.stroke();
+  const label=String(labeled),tw=Math.max(32,o.measureText(label).width+12);
+  o.fillStyle='white';o.fillRect(found.lx-tw/2,found.ly-13,tw,26);
+  o.fillStyle='black';o.fillText(label,found.lx,found.ly);
+ }
+ setStatus('Tracing sheet: '+labeled+' straight-run references at 4× resolution. Curves are represented by short directional segments; review before release.');
 };
 function boxBlur(src,w,h){const dst=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h){s+=src[yy*w+xx];n++}}dst[y*w+x]=s/n}return dst}
-download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.0-tracing.png';a.href=output.toDataURL('image/png');a.click()};
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.1-redo-tracing.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(msg,error=false){status.textContent=msg;status.className='status'+(error?' error':'')}
