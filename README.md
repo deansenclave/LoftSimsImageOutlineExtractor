@@ -1,6 +1,11 @@
 # LoftSims Image Outline Extractor
 
-**Version 0.3.1**
+**Version 0.3.2**
+
+## v0.3.2 — image-loading fix
+- Replaced the object-URL-only loader with FileReader/DataURL loading for local images.
+- Added explicit read/decode/load error reporting.
+- Displays loaded filename and native dimensions when loading succeeds.
 
 ## v0.3.1 — ordered tracing sheet
 v0.3.0 visual validation showed that placing every detected geometric label directly on the source-sized outline made the result unreadable.
