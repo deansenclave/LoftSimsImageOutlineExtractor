@@ -1,25 +1,28 @@
 # LoftSims Image Outline Extractor
 
-**Version 0.2.1**
+**Version 0.3.0**
 
-**Picture → outline → continuous pen path → numbered drawing sequence**
+**Picture → outlines → unique contours → geometric transitions → drawing instructions**
 
-## v0.2.1
-- Preserves v0.2.0 continuous no-pen-lift path generation.
-- Adds **Number path**.
-- Adds adjustable checkpoint count (5–50).
-- Places ordered checkpoint numbers along the generated path.
-- Marks START and END so drawing direction is visible.
-- Numbered result can be downloaded as PNG.
+## v0.3.0
+This version replaces the arbitrary v0.2.1 checkpoint-count model with geometry-derived labeling based on the supplied examples.
 
-## v0.2.0
-Introduced the single continuous pen path. Disconnected regions are connected by travel strokes where required.
+- Detects connected/unique outline contours.
+- Traces each contour and simplifies small pixel fluctuations.
+- Detects major direction changes as geometric transition points.
+- Straight runs remain unsplit unless their geometry changes.
+- Detects curved runs separately.
+- Each detected curved run receives four ordered reference points **a, b, c, d**, defining **AB, BC, CD** portions.
+- Major contour transition points receive sequential numeric labels.
+- Exports the annotated geometry as PNG.
 
-## v0.1.0
-Introduced browser-native JPG/PNG/WebP outline extraction using grayscale conversion, smoothing and Sobel gradient detection.
+## Version history
+- **v0.2.1** — arbitrary numbered checkpoints (superseded by geometry-derived segmentation).
+- **v0.2.0** — continuous no-pen-lift path generation.
+- **v0.1.0** — browser-native image outline extraction.
 
 ## Run
 Open `index.html` in a modern browser. No Python, package manager, build process or server is required.
 
-## Stack
-HTML / CSS / JavaScript / Canvas
+## Validation
+v0.3.0 is the first geometry-derived implementation. The supplied hand-drawn examples define the intended behavior; visual validation will determine threshold refinements for corner-vs-curve classification.
