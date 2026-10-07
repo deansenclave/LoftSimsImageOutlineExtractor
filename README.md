@@ -1,23 +1,25 @@
 # LoftSims Image Outline Extractor
 
-**Version 0.2.0**
+**Version 0.2.1**
 
-**Picture → outline → continuous pen path**
+**Picture → outline → continuous pen path → numbered drawing sequence**
+
+## v0.2.1
+- Preserves v0.2.0 continuous no-pen-lift path generation.
+- Adds **Number path**.
+- Adds adjustable checkpoint count (5–50).
+- Places ordered checkpoint numbers along the generated path.
+- Marks START and END so drawing direction is visible.
+- Numbered result can be downloaded as PNG.
 
 ## v0.2.0
-- Preserves the working v0.1.0 JPG/PNG/WebP outline extraction.
-- Adds **Build single-line path**.
-- Samples detected outline points and orders them into one continuous route.
-- The rendered route is one uninterrupted stroke: no pen-up operation.
-- Disconnected outline regions are joined by travel strokes; existing regions may be retraced where needed.
-- Downloads the single-line result as PNG.
-- Entirely browser-native: HTML / CSS / JavaScript / Canvas.
+Introduced the single continuous pen path. Disconnected regions are connected by travel strokes where required.
 
-## v0.1.0 baseline
-Grayscale conversion, smoothing, Sobel gradient outline detection, adjustable sensitivity/line thickness, and PNG output.
+## v0.1.0
+Introduced browser-native JPG/PNG/WebP outline extraction using grayscale conversion, smoothing and Sobel gradient detection.
 
 ## Run
 Open `index.html` in a modern browser. No Python, package manager, build process or server is required.
 
-## Validation note
-v0.2.0 establishes the no-pen-lift path mechanism. Visual validation on different photographs is the next step; path quality and connector minimization can then be refined without changing the v0.1.0 extractor baseline.
+## Stack
+HTML / CSS / JavaScript / Canvas
