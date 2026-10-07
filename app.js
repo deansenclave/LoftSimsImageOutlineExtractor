@@ -1,32 +1,38 @@
-const $=id=>document.getElementById(id),file=$('file'),source=$('source'),output=$('output'),extract=$('extract'),geometry=$('geometry'),download=$('download'),status=$('status');
-let loaded=false,edge=null,W=0,H=0,components=[];
-for(const id of ['threshold','blur','thickness'])$(id).oninput=e=>$(id+'Value').value=e.target.value;
-file.addEventListener('change',()=>{
- const f=file.files[0]; if(!f)return;
- if(!/^image\/(png|jpeg|webp)$/.test(f.type)){setStatus('Unsupported image type.',true);return}
- const img=new Image(); img.onload=()=>{
-  const max=1600,scale=Math.min(1,max/Math.max(img.width,img.height));
-  W=source.width=Math.round(img.width*scale);H=source.height=Math.round(img.height*scale);
-  source.getContext('2d').drawImage(img,0,0,W,H);
-  source.style.display='block';$('sourceEmpty').style.display='none';loaded=true;extract.disabled=false;geometry.disabled=download.disabled=true;
-  setStatus('Picture loaded. Select Extract outlines.');
-  URL.revokeObjectURL(img.src);
- };img.src=URL.createObjectURL(f);
-});
-extract.onclick=()=>{if(!loaded)return;const px=source.getContext('2d').getImageData(0,0,W,H).data;let g=new Float32Array(W*H);for(let i=0,p=0;i<px.length;i+=4,p++)g[p]=.299*px[i]+.587*px[i+1]+.114*px[i+2];for(let k=0;k<+$('blur').value;k++)g=blur(g);edge=new Uint8Array(W*H);const t=+$('threshold').value;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,gx=-g[i-W-1]+g[i-W+1]-2*g[i-1]+2*g[i+1]-g[i+W-1]+g[i+W+1],gy=-g[i-W-1]-2*g[i-W]-g[i-W+1]+g[i+W-1]+2*g[i+W]+g[i+W+1];edge[i]=Math.hypot(gx,gy)>=t}renderRaw();geometry.disabled=false;download.disabled=false;setStatus('Clean outline extracted. Build the tracing sheet.')};
-function renderRaw(){output.width=W;output.height=H;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,W,H);o.fillStyle='black';for(let i=0;i<edge.length;i++)if(edge[i])o.fillRect(i%W,Math.floor(i/W),1,1);show()}
-geometry.onclick=()=>{components=findComponents().filter(c=>c.length>=Math.max(20,W*H/150000)).sort((a,b)=>contourTop(a)-contourTop(b)||left(a)-left(b));renderSheet();};
-function findComponents(){const seen=new Uint8Array(edge.length),out=[],dirs=[-1,1,-W,W,-W-1,-W+1,W-1,W+1];for(let i=0;i<edge.length;i++)if(edge[i]&&!seen[i]){const q=[i],c=[];seen[i]=1;while(q.length){const a=q.pop();c.push({x:a%W,y:Math.floor(a/W)});for(const d of dirs){const b=a+d;if(b>=0&&b<edge.length&&edge[b]&&!seen[b]&&Math.abs(b%W-a%W)<=1){seen[b]=1;q.push(b)}}}out.push(c)}return out}
-function renderSheet(){const scale=2.5,pad=Math.round(Math.max(W,H)*.12),cw=Math.round(W*scale+pad*2),ch=Math.round(H*scale+pad*2);output.width=cw;output.height=ch;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,cw,ch);o.strokeStyle='black';o.fillStyle='black';o.lineWidth=Math.max(1,+$('thickness').value*scale*.65);o.lineCap='round';for(let i=0;i<edge.length;i++)if(edge[i]){const x=pad+(i%W)*scale,y=pad+Math.floor(i/W)*scale;o.fillRect(x,y,Math.max(1,o.lineWidth),Math.max(1,o.lineWidth))}
-const boxes=[];components.forEach((c,n)=>{const pts=sampleContour(c,needsSubdivisions(c)?4:1);pts.forEach((p,k)=>placeLabel(o,{x:pad+p.x*scale,y:pad+p.y*scale},String(n+1)+(pts.length>1?String.fromCharCode(97+k):''),boxes,cw,ch,pad));});show();download.disabled=false;setStatus(components.length+' independent contours sequenced. Labels are offset from the drawing on a '+cw+'×'+ch+' tracing sheet.')}
-function sampleContour(c,count){const ordered=order(c);if(count===1)return[ordered[0]];return Array.from({length:count},(_,k)=>ordered[Math.round(k*(ordered.length-1)/(count-1))])}
-function order(c){const pts=c.slice(),start=pts.reduce((a,b)=>b.x<a.x?b:a),used=new Set(),path=[start];used.add(start);let cur=start;while(path.length<pts.length){let best=null,bd=Infinity;for(const p of pts)if(!used.has(p)){const d=(p.x-cur.x)**2+(p.y-cur.y)**2;if(d<bd){bd=d;best=p}}if(!best)break;used.add(best);path.push(best);cur=best}return path}
-function needsSubdivisions(c){const w=right(c)-left(c)+1,h=bottom(c)-top(c)+1;return c.length>80&&w>12&&h>12}
-function placeLabel(o,p,text,boxes,cw,ch,pad){const font=Math.max(16,Math.round(Math.min(cw,ch)/75));o.font='bold '+font+'px Arial';const tw=o.measureText(text).width+12,th=font+10,dirs=[[0,-34],[34,0],[0,34],[-34,0],[48,-48],[-48,-48],[48,48],[-48,48]];let box=null;for(let ring=1;ring<=8&&!box;ring++)for(const d of dirs){const x=Math.max(4,Math.min(cw-tw-4,p.x+d[0]*ring)),y=Math.max(th,Math.min(ch-4,p.y+d[1]*ring)),b={x:x-tw/2,y:y-th/2,w:tw,h:th};if(!boxes.some(q=>hit(b,q))){box=b;break}}if(!box)box={x:p.x+20,y:p.y-30,w:tw,h:th};boxes.push(box);const lx=box.x+box.w/2,ly=box.y+box.h/2;o.strokeStyle='#777';o.lineWidth=1;o.beginPath();o.moveTo(p.x,p.y);o.lineTo(lx,ly);o.stroke();o.fillStyle='white';o.fillRect(box.x,box.y,box.w,box.h);o.strokeStyle='#bbb';o.strokeRect(box.x,box.y,box.w,box.h);o.fillStyle='black';o.textAlign='center';o.textBaseline='middle';o.fillText(text,lx,ly)}
-function hit(a,b){return a.x<b.x+b.w+5&&a.x+a.w+5>b.x&&a.y<b.y+b.h+5&&a.y+a.h+5>b.y}
-function contourTop(c){return Math.min(...c.map(p=>p.y))}function bottom(c){return Math.max(...c.map(p=>p.y))}function left(c){return Math.min(...c.map(p=>p.x))}function right(c){return Math.max(...c.map(p=>p.x))}
-function blur(src){const d=new Float32Array(src.length);for(let y=0;y<H;y++)for(let x=0;x<W;x++){let s=0,n=0;for(let yy=Math.max(0,y-1);yy<=Math.min(H-1,y+1);yy++)for(let xx=Math.max(0,x-1);xx<=Math.min(W-1,x+1);xx++){s+=src[yy*W+xx];n++}d[y*W+x]=s/n}return d}
-function show(){output.style.display='block';$('outputEmpty').style.display='none'}
-download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.9-tracing-sheet.png';a.href=output.toDataURL('image/png');a.click()};
-function setStatus(m,e=false){status.textContent=m;status.className='status'+(e?' error':'')}
-setStatus('Application ready · v0.3.9 JavaScript loaded. Choose a picture.');
+const $=id=>document.getElementById(id);
+const file=$('file'),source=$('source'),output=$('output'),extract=$('extract'),single=$('single'),trace=$('trace'),download=$('download'),status=$('status');
+let loaded=false,edge=null,W=0,H=0,pathPoints=null;
+for(const id of ['threshold','blur','thickness']) $(id).addEventListener('input',e=>$(id+'Value').value=e.target.value);
+file.addEventListener('change',()=>{const f=file.files[0];if(!f)return;if(!/^image\/(png|jpeg|webp)$/.test(f.type)){setStatus('Unsupported image type.',true);return}
+ const img=new Image();img.onload=()=>{const max=1600,s=Math.min(1,max/Math.max(img.width,img.height));W=source.width=Math.round(img.width*s);H=source.height=Math.round(img.height*s);source.getContext('2d').drawImage(img,0,0,W,H);source.style.display='block';$('sourceEmpty').style.display='none';loaded=true;extract.disabled=false;single.disabled=true;trace.disabled=true;download.disabled=true;setStatus('Picture loaded. Select Extract outlines.');URL.revokeObjectURL(img.src)};img.src=URL.createObjectURL(f)});
+extract.onclick=()=>{if(loaded)extractOutline()};
+function extractOutline(){setStatus('Extracting outlines…');const px=source.getContext('2d').getImageData(0,0,W,H).data;let gray=new Float32Array(W*H);
+ for(let i=0,p=0;i<px.length;i+=4,p++)gray[p]=.299*px[i]+.587*px[i+1]+.114*px[i+2];for(let k=0;k<+$('blur').value;k++)gray=boxBlur(gray,W,H);
+ edge=new Uint8Array(W*H);const t=+$('threshold').value;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,gx=-gray[i-W-1]+gray[i-W+1]-2*gray[i-1]+2*gray[i+1]-gray[i+W-1]+gray[i+W+1],gy=-gray[i-W-1]-2*gray[i-W]-gray[i-W+1]+gray[i+W-1]+2*gray[i+W]+gray[i+W+1];edge[i]=Math.hypot(gx,gy)>=t?1:0}renderEdges();pathPoints=null;single.disabled=false;trace.disabled=true;download.disabled=false;setStatus('Outline extraction complete. You can now build one continuous pen path.')}
+function renderEdges(){output.width=W;output.height=H;const o=output.getContext('2d'),im=o.createImageData(W,H);im.data.fill(255);const thick=+$('thickness').value;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(edge[y*W+x])for(let dy=-thick+1;dy<thick;dy++)for(let dx=-thick+1;dx<thick;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<W&&yy>=0&&yy<H){const q=(yy*W+xx)*4;im.data[q]=im.data[q+1]=im.data[q+2]=0;im.data[q+3]=255}}o.putImageData(im,0,0);output.style.display='block';$('outputEmpty').style.display='none'}
+single.onclick=()=>buildContinuousPath();
+function buildContinuousPath(){if(!edge)return;setStatus('Building continuous pen path…');const pts=[];for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2)if(edge[y*W+x])pts.push({x,y});if(!pts.length){setStatus('No outline points found.',true);return}
+ const used=new Uint8Array(pts.length),path=[],cell=24,buckets=new Map(),key=(x,y)=>Math.floor(x/cell)+','+Math.floor(y/cell);
+ pts.forEach((p,i)=>{const k=key(p.x,p.y);if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(i)});
+ let cur=0;used[cur]=1;path.push(pts[cur]);for(let n=1;n<pts.length;n++){const p=pts[cur],cx=Math.floor(p.x/cell),cy=Math.floor(p.y/cell);let best=-1,bd=Infinity;
+  for(let r=0;r<=Math.max(Math.ceil(W/cell),Math.ceil(H/cell))&&best<0;r++)for(let yy=cy-r;yy<=cy+r;yy++)for(let xx=cx-r;xx<=cx+r;xx++){if(r&&xx>cx-r&&xx<cx+r&&yy>cy-r&&yy<cy+r)continue;for(const i of buckets.get(xx+','+yy)||[])if(!used[i]){const q=pts[i],d=(q.x-p.x)**2+(q.y-p.y)**2;if(d<bd){bd=d;best=i}}}
+  if(best<0)break;cur=best;used[cur]=1;path.push(pts[cur])}
+ pathPoints=path;trace.disabled=false;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,W,H);o.strokeStyle='black';o.lineWidth=Math.max(1,+$('thickness').value);o.lineCap='round';o.lineJoin='round';o.beginPath();o.moveTo(path[0].x,path[0].y);for(let i=1;i<path.length;i++)o.lineTo(path[i].x,path[i].y);o.stroke();
+ o.fillStyle='black';o.beginPath();o.arc(path[0].x,path[0].y,4,0,Math.PI*2);o.fill();setStatus('Single continuous path generated: '+path.length+' sampled outline points, with connecting/retraced travel where required.');download.disabled=false}
+
+trace.onclick=()=>{if(!pathPoints||!pathPoints.length)return;const path=pathPoints,scale=2,pad=80;
+ output.width=W*scale+pad*2;output.height=H*scale+pad*2;
+ const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,output.width,output.height);
+ o.strokeStyle='black';o.lineWidth=Math.max(1,+$('thickness').value*scale);o.beginPath();
+ o.moveTo(pad+path[0].x*scale,pad+path[0].y*scale);
+ for(let i=1;i<path.length;i++)o.lineTo(pad+path[i].x*scale,pad+path[i].y*scale);o.stroke();
+ const marks=Math.min(20,Math.max(2,Math.ceil(path.length/500)));
+ o.font='bold 18px Arial';o.textAlign='center';o.textBaseline='middle';
+ for(let n=0;n<marks;n++){const p=path[Math.round(n*(path.length-1)/Math.max(1,marks-1))];
+  const x=pad+p.x*scale,y=pad+p.y*scale,offset=n%2?38:-38,ly=Math.max(18,Math.min(output.height-18,y+offset));
+  o.strokeStyle='#888';o.lineWidth=1;o.beginPath();o.moveTo(x,y);o.lineTo(x,ly);o.stroke();
+  o.fillStyle='white';o.fillRect(x-19,ly-13,38,26);o.fillStyle='black';o.fillText(String(n+1),x,ly)}
+ setStatus('Tracing plan: '+marks+' ordered labels. This is a preliminary path-order visualization, not independent contour recognition.');
+};
+function boxBlur(src,w,h){const dst=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h){s+=src[yy*w+xx];n++}}dst[y*w+x]=s/n}return dst}
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.0-tracing.png';a.href=output.toDataURL('image/png');a.click()};
+function setStatus(msg,error=false){status.textContent=msg;status.className='status'+(error?' error':'')}
