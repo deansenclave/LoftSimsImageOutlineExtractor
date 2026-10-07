@@ -1,29 +1,39 @@
 # LoftSims Image Outline Extractor
 
-**Version 0.3.2**
+**v0.3.0 — clean rebuild from user-validated v0.2.0**
 
-## v0.3.2 — image-loading fix
-- Replaced the object-URL-only loader with FileReader/DataURL loading for local images.
-- Added explicit read/decode/load error reporting.
-- Displays loaded filename and native dimensions when loading succeeds.
+The v0.3.0–v0.3.9 attempts were not accepted as working. This rebuild restores the original v0.2.0 input, Sobel extraction, and continuous-path pipeline. It adds a separate, preliminary **Build tracing plan** action after the path is built.
 
-## v0.3.1 — ordered tracing sheet
-v0.3.0 visual validation showed that placing every detected geometric label directly on the source-sized outline made the result unreadable.
+## Workflow
+Choose picture → Extract outlines → Build single-line path → Build tracing plan → Download PNG.
 
-v0.3.1 changes the output model:
-- Builds a high-resolution tracing canvas at 2.5× source scale plus outer annotation margin.
-- Keeps the outline itself visually clean.
-- Sequences independent contours numerically: 1, 2, 3…
-- Complex contours receive belonging alphabetical trace references: 1a, 1b, 1c, 1d; 2a, 2b…
-- Labels are offset from the contour and connected to their exact trace location by leader lines.
-- Includes collision avoidance so annotation boxes do not overwrite each other.
-- Downloaded PNG retains full tracing-sheet resolution even when the browser preview is visually scaled.
-
-## Version history
-- **v0.3.0** — first geometry-derived analysis; retained as a validation baseline.
-- **v0.2.1** — arbitrary numbered checkpoints.
-- **v0.2.0** — continuous path experiment.
-- **v0.1.0** — browser-native outline extraction.
+## Current limitation
+Tracing plan labels are sampled along the continuous path. They are **not** yet labels of independent geometrically meaningful contours. The intended numeric-contour/alphabetic-curve labeling and collision-free layout require a separate validated algorithm. This is a rebuild checkpoint, not a completed contour-tracing solution.
 
 ## Run
-Open `index.html` in a modern browser. No Python or build process is required.
+Open `index.html` in a browser. HTML, CSS, JS and Canvas only; no Python or build system.
+
+## Historical baseline
+# LoftSims Image Outline Extractor
+
+**Version 0.2.0**
+
+**Picture → outline → continuous pen path**
+
+## v0.2.0
+- Preserves the working v0.1.0 JPG/PNG/WebP outline extraction.
+- Adds **Build single-line path**.
+- Samples detected outline points and orders them into one continuous route.
+- The rendered route is one uninterrupted stroke: no pen-up operation.
+- Disconnected outline regions are joined by travel strokes; existing regions may be retraced where needed.
+- Downloads the single-line result as PNG.
+- Entirely browser-native: HTML / CSS / JavaScript / Canvas.
+
+## v0.1.0 baseline
+Grayscale conversion, smoothing, Sobel gradient outline detection, adjustable sensitivity/line thickness, and PNG output.
+
+## Run
+Open `index.html` in a modern browser. No Python, package manager, build process or server is required.
+
+## Validation note
+v0.2.0 establishes the no-pen-lift path mechanism. Visual validation on different photographs is the next step; path quality and connector minimization can then be refined without changing the v0.1.0 extractor baseline.
