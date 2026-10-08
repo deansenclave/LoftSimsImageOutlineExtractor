@@ -19,59 +19,77 @@ function buildContinuousPath(){if(!edge)return;setStatus('Building continuous pe
  pathPoints=path;trace.disabled=false;const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,W,H);o.strokeStyle='black';o.lineWidth=Math.max(1,+$('thickness').value);o.lineCap='round';o.lineJoin='round';o.beginPath();o.moveTo(path[0].x,path[0].y);for(let i=1;i<path.length;i++)o.lineTo(path[i].x,path[i].y);o.stroke();
  o.fillStyle='black';o.beginPath();o.arc(path[0].x,path[0].y,4,0,Math.PI*2);o.fill();setStatus('Single continuous path generated: '+path.length+' sampled outline points, with connecting/retraced travel where required.');download.disabled=false}
 
-// Segment detector: maximal straight runs in four principal pixel directions.
-// Curved contours are approximated by successive short directional runs.
-function detectSegments(){
- const dirs=[[1,0],[0,1],[1,1],[1,-1]],out=[],minLength=5;
- for(const [dx,dy] of dirs){
-  const visited=new Uint8Array(edge.length);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-   const i=y*W+x;if(!edge[i]||visited[i])continue;
-   const px=x-dx,py=y-dy;
-   if(px>=0&&px<W&&py>=0&&py<H&&edge[py*W+px])continue;
-   let xx=x,yy=y,len=0;
-   while(xx>=0&&xx<W&&yy>=0&&yy<H&&edge[yy*W+xx]&&!visited[yy*W+xx]){
-    visited[yy*W+xx]=1;len++;xx+=dx;yy+=dy;
+// Trace connected pixel paths, not horizontal/vertical scan-grid runs.
+function traceGeometry(){
+ const nbr=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]],seen=new Uint8Array(W*H),parts=[];
+ const adjacent=i=>{const x=i%W,y=(i/W)|0,r=[];for(const [dx,dy] of nbr){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<W&&yy>=0&&yy<H&&edge[yy*W+xx])r.push(yy*W+xx)}return r};
+ // Group connected edge pixels, then walk each group using local adjacency.
+ for(let seed=0;seed<edge.length;seed++)if(edge[seed]&&!seen[seed]){
+  const stack=[seed],pixels=[];seen[seed]=1;
+  while(stack.length){const i=stack.pop();pixels.push(i);for(const j of adjacent(i))if(!seen[j]){seen[j]=1;stack.push(j)}}
+  if(pixels.length<12)continue;
+  const inPart=new Set(pixels),used=new Set(),degrees=new Map();
+  for(const i of pixels)degrees.set(i,adjacent(i).filter(j=>inPart.has(j)).length);
+  const starts=pixels.filter(i=>degrees.get(i)!==2);
+  const queue=starts.length?starts:pixels.slice(0,1);
+  for(const start of queue){
+   for(const first of adjacent(start).filter(j=>inPart.has(j))){
+    const key=(u,v)=>u<v?u+':'+v:v+':'+u;
+    if(used.has(key(start,first)))continue;
+    const chain=[start],prev0=start;let prev=prev0,cur=first;
+    while(true){used.add(key(prev,cur));chain.push(cur);const options=adjacent(cur).filter(j=>inPart.has(j)&&j!==prev&&!used.has(key(cur,j)));
+     if(degrees.get(cur)!==2||!options.length)break;
+     prev=cur;cur=options[0];
+    }
+    if(chain.length>=7)parts.push(chain.map(i=>({x:i%W,y:(i/W)|0})));
    }
-   if(len>=minLength)out.push({x:x+(len-1)*dx/2,y:y+(len-1)*dy/2,len,dx,dy});
   }
  }
- return out.sort((a,b)=>Math.floor(a.y/28)-Math.floor(b.y/28)||a.x-b.x);
+ return parts;
+}
+function geometryMarks(chains,target){
+ const lengths=chains.map(c=>{let d=0;for(let i=1;i<c.length;i++)d+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return d});
+ const candidates=chains.map((c,i)=>({c,len:lengths[i],i})).filter(v=>v.len>=8).sort((a,b)=>b.len-a.len);
+ const selected=candidates.slice(0,target),counts=selected.map(()=>1);
+ let remaining=Math.max(0,target-selected.length),weight=selected.reduce((s,v)=>s+v.len,0);
+ const fractions=selected.map(v=>remaining*v.len/(weight||1));
+ fractions.forEach((v,i)=>counts[i]+=Math.floor(v));
+ remaining=target-counts.reduce((a,b)=>a+b,0);
+ const order=fractions.map((v,i)=>({i,f:v-Math.floor(v)})).sort((a,b)=>b.f-a.f);
+ for(let i=0;i<remaining&&i<order.length;i++)counts[order[i].i]++;
+ const marks=[];
+ selected.forEach((v,k)=>{const c=v.c,n=counts[k],total=v.len;let cum=[0];for(let i=1;i<c.length;i++)cum.push(cum[i-1]+Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y));
+  for(let j=0;j<n;j++){const at=total*(j+.5)/n;let i=1;while(i<cum.length-1&&cum[i]<at)i++;const t=(at-cum[i-1])/Math.max(.001,cum[i]-cum[i-1]);marks.push({x:c[i-1].x+(c[i].x-c[i-1].x)*t,y:c[i-1].y+(c[i].y-c[i-1].y)*t,part:k+1,sub:j+1})}
+ });
+ return marks.sort((a,b)=>a.part-b.part||a.sub-b.sub);
 }
 trace.onclick=()=>{
- if(!edge)return;
- const segments=detectSegments(),scale=4,pad=120;
+ if(!edge)return;setStatus('Tracing connected contours and allocating geometric points…');
+ const chains=traceGeometry(),target=+$('target').value,marks=geometryMarks(chains,target),scale=4,pad=130;
  output.width=W*scale+2*pad;output.height=H*scale+2*pad;
  const o=output.getContext('2d');o.fillStyle='white';o.fillRect(0,0,output.width,output.height);
- o.fillStyle='black';const width=Math.max(1,+$('thickness').value*scale);
- for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(edge[y*W+x])o.fillRect(pad+x*scale,pad+y*scale,width,width);
- const occupied=new Set(),font=20,cell=34,cols=Math.ceil(output.width/cell),rows=Math.ceil(output.height/cell);
- o.font='bold '+font+'px Arial';o.textAlign='center';o.textBaseline='middle';
- let labeled=0;
- for(const seg of segments){
-  const ax=pad+seg.x*scale,ay=pad+seg.y*scale;
-  let found=null;
-  for(let ring=2;ring<20&&!found;ring++){
-   for(let k=0;k<16;k++){
-    const angle=k*Math.PI/8,cx=Math.round(ax/cell+ring*Math.cos(angle)),cy=Math.round(ay/cell+ring*Math.sin(angle));
-    if(cx<1||cy<1||cx>=cols-1||cy>=rows-1)continue;
-    const key=cy*cols+cx;
-    if(occupied.has(key))continue;
-    const lx=cx*cell,ly=cy*cell;
-    const ix=Math.max(0,Math.min(W-1,Math.round((lx-pad)/scale))),iy=Math.max(0,Math.min(H-1,Math.round((ly-pad)/scale)));
-    if(edge[iy*W+ix])continue;
-    found={lx,ly,key};break;
-   }
+ o.fillStyle='#222';for(let i=0;i<edge.length;i++)if(edge[i])o.fillRect(pad+(i%W)*scale,pad+((i/W)|0)*scale,Math.max(1,+$('thickness').value*scale),Math.max(1,+$('thickness').value*scale));
+ const cell=44,occupied=new Set(),cols=Math.ceil(output.width/cell),rows=Math.ceil(output.height/cell);
+ o.font='bold 21px Arial';o.textAlign='center';o.textBaseline='middle';let drawn=0;
+ for(let n=0;n<marks.length;n++){
+  const p=marks[n],x=pad+p.x*scale,y=pad+p.y*scale,label=String(n+1);
+  let dest=null;
+  for(let radius=1;radius<=18&&!dest;radius++)for(let k=0;k<24;k++){
+   const theta=k*Math.PI/12,cx=Math.round(x/cell+radius*Math.cos(theta)),cy=Math.round(y/cell+radius*Math.sin(theta));
+   if(cx<1||cy<1||cx>=cols-1||cy>=rows-1)continue;
+   const key=cy*cols+cx,xx=cx*cell,yy=cy*cell;
+   if(occupied.has(key))continue;
+   const px=Math.round((xx-pad)/scale),py=Math.round((yy-pad)/scale);
+   if(px>=0&&px<W&&py>=0&&py<H&&edge[py*W+px])continue;
+   dest={key,x:xx,y:yy};break;
   }
-  if(!found)continue;
-  occupied.add(found.key);labeled++;
-  o.strokeStyle='#777';o.lineWidth=1;o.beginPath();o.moveTo(ax,ay);o.lineTo(found.lx,found.ly);o.stroke();
-  const label=String(labeled),tw=Math.max(32,o.measureText(label).width+12);
-  o.fillStyle='white';o.fillRect(found.lx-tw/2,found.ly-13,tw,26);
-  o.fillStyle='black';o.fillText(label,found.lx,found.ly);
+  if(!dest)continue;occupied.add(dest.key);
+  o.strokeStyle='#888';o.lineWidth=1;o.beginPath();o.moveTo(x,y);o.lineTo(dest.x,dest.y);o.stroke();
+  const width=Math.max(34,o.measureText(label).width+12);
+  o.fillStyle='white';o.fillRect(dest.x-width/2,dest.y-14,width,28);o.fillStyle='#111';o.fillText(label,dest.x,dest.y);drawn++;
  }
- setStatus('Tracing sheet: '+labeled+' straight-run references at 4× resolution. Curves are represented by short directional segments; review before release.');
+ setStatus('Detected '+chains.length+' connected trace paths; '+drawn+' of '+target+' target references placed on a 4× sheet. Inspect segmentation before acceptance.');
 };
 function boxBlur(src,w,h){const dst=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h){s+=src[yy*w+xx];n++}}dst[y*w+x]=s/n}return dst}
-download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.1-redo-tracing.png';a.href=output.toDataURL('image/png');a.click()};
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.2-redo-tracing.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(msg,error=false){status.textContent=msg;status.className='status'+(error?' error':'')}
