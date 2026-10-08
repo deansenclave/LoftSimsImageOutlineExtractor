@@ -1,9 +1,11 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.13-redo — independent clean SVG preview
+## v0.3.14-redo — geometric candidate consolidation and shared IDs
 
-Adds **Preview clean SVG** between segment counting and numbering. It draws the detected skeleton centerlines as thin black vector strokes on a white SVG background without embedding gray raster pixels. This permits inspection of geometry *before* numbering. Preview rendering yields every 50 paths and supports cancellation through the existing Cancel numbering control. Numbering reuses the same vector-path renderer. Earlier features and branches are retained.
+This experimental revision removes very short skeleton fragments (under 5 image pixels) from the candidate inventory, attempts to join near-collinear fragments sharing endpoints, and assigns stable IDs within the resulting inventory. Numbering defaults to the 200 longest candidates rather than forcing tens of thousands of labels; the All Segments option remains available. Blue text is reduced from 18 to 9 SVG units, and dots from radius 2.5 to 1.7. Numbering remains incremental and cancellable.
 
-Workflow: Choose picture → Extract outlines → Convert displayed image to SVG (raster fidelity check) → Count line segments → Preview clean SVG → Number line segments → Download numbered SVG.
+**Segment SVG** now uses the same candidate geometry and IDs as Count and Number; Show all, Hide all, Toggle segment, and segmented SVG export act on candidate paths rather than raster-connected components.
 
-**Validation pending:** Browser visual and performance tests. Counting still uses synchronous thinning, and large final SVG insertion can stall. Centerline geometry is heuristic and may fragment lines; removing gray pixels does not guarantee a faithful outline. The original lossless raster-embedded SVG remains separately available.
+Workflow: load image → Extract outlines → Convert displayed image to SVG → Count line segments → Preview clean SVG → Number line segments or Segment SVG.
+
+**Limitations and test status:** Code pushed, browser visual/performance validation not yet performed. This is heuristic consolidation, not guaranteed identification of real-world line segments. Short detail can be excluded, complex junctions can remain fragmented, and numbering with All Segments can still be expensive. The earlier branches and raster-fidelity SVG remain preserved.
