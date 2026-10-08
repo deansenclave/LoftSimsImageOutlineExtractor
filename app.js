@@ -7,7 +7,7 @@ file.addEventListener('change',()=>{const f=file.files[0];if(!f)return;if(!/^ima
 extract.onclick=()=>{if(loaded)extractOutline()};
 function extractOutline(){setStatus('Extracting outlines…');const px=source.getContext('2d').getImageData(0,0,W,H).data;let gray=new Float32Array(W*H);
  for(let i=0,p=0;i<px.length;i+=4,p++)gray[p]=.299*px[i]+.587*px[i+1]+.114*px[i+2];for(let k=0;k<+$('blur').value;k++)gray=boxBlur(gray,W,H);
- edge=new Uint8Array(W*H);const t=+$('threshold').value;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,gx=-gray[i-W-1]+gray[i-W+1]-2*gray[i-1]+2*gray[i+1]-gray[i+W-1]+gray[i+W+1],gy=-gray[i-W-1]-2*gray[i-W]-gray[i-W+1]+gray[i+W-1]+2*gray[i+W]+gray[i+W+1];edge[i]=Math.hypot(gx,gy)>=t?1:0}renderEdges();pathPoints=null;single.disabled=false;trace.disabled=true;download.disabled=false;setStatus('Outline extraction complete. You can now build one continuous pen path.')}
+ edge=new Uint8Array(W*H);const t=+$('threshold').value;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,gx=-gray[i-W-1]+gray[i-W+1]-2*gray[i-1]+2*gray[i+1]-gray[i+W-1]+gray[i+W+1],gy=-gray[i-W-1]-2*gray[i-W]-gray[i-W+1]+gray[i+W-1]+2*gray[i+W]+gray[i+W+1];edge[i]=Math.hypot(gx,gy)>=t?1:0}renderEdges();pathPoints=null;single.disabled=false;trace.disabled=false;download.disabled=false;setStatus('Outline extraction complete. You can now build one continuous pen path.')}
 function renderEdges(){svgMarkup='';$('vectorView').style.display='none';$('svgDownload').disabled=true;output.width=W;output.height=H;const o=output.getContext('2d'),im=o.createImageData(W,H);im.data.fill(255);const thick=+$('thickness').value;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(edge[y*W+x])for(let dy=-thick+1;dy<thick;dy++)for(let dx=-thick+1;dx<thick;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<W&&yy>=0&&yy<H){const q=(yy*W+xx)*4;im.data[q]=im.data[q+1]=im.data[q+2]=0;im.data[q+3]=255}}o.putImageData(im,0,0);output.style.display='block';$('outputEmpty').style.display='none'}
 single.onclick=()=>buildContinuousPath();
 function buildContinuousPath(){svgMarkup='';$('vectorView').style.display='none';$('svgDownload').disabled=true;output.style.display='block';if(!edge)return;setStatus('Building continuous pen path…');const pts=[];for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2)if(edge[y*W+x])pts.push({x,y});if(!pts.length){setStatus('No outline points found.',true);return}
@@ -65,45 +65,28 @@ function geometryMarks(chains,target){
 }
 let svgMarkup='';
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-trace.onclick=()=>{
- if(!edge)return;setStatus('Building SVG geometry and tracing points…');
- const chains=traceGeometry(),target=+$('target').value,marks=geometryMarks(chains,target),scale=4,pad=110;
- const width=W*scale+2*pad,height=H*scale+2*pad;
- const chunks=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+width+' '+height+'" width="'+width+'" height="'+height+'">','<rect width="100%" height="100%" fill="white"/>'];
- // SVG geometry uses a one-pixel stroke in output coordinates; no scale-dependent line thickening.
- for(const chain of chains){
-  if(chain.length<2)continue;
-  const d=chain.map((p,i)=>(i?'L':'M')+(pad+p.x*scale).toFixed(1)+' '+(pad+p.y*scale).toFixed(1)).join(' ');
-  chunks.push('<path d="'+d+'" fill="none" stroke="#111" stroke-width="1" vector-effect="non-scaling-stroke" stroke-linecap="round"/>');
- }
- // Points are always on their contour coordinates. Labels are independently offset.
- const occupied=new Set(),cell=34,cols=Math.ceil(width/cell),rows=Math.ceil(height/cell);
- let drawn=0;
- for(let n=0;n<marks.length;n++){
-  const p=marks[n],x=pad+p.x*scale,y=pad+p.y*scale,label=String(n+1);
-  chunks.push('<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="2.5" fill="#1477cf"/>');
-  let pos=null;
-  for(let ring=1;ring<=20&&!pos;ring++)for(const side of [-1,1]){
-   const yy=y+side*ring*cell*.65,xx=x;
-   const cx=Math.round(xx/cell),cy=Math.round(yy/cell),key=cy*cols+cx;
-   if(cx<1||cy<1||cx>=cols-1||cy>=rows-1||occupied.has(key))continue;
-   pos={x:xx,y:yy,key};
-  }
-  if(!pos)continue;occupied.add(pos.key);drawn++;
-  chunks.push('<text x="'+pos.x.toFixed(1)+'" y="'+pos.y.toFixed(1)+'" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#1477cf">'+svgEsc(label)+'</text>');
- }
- chunks.push('</svg>');svgMarkup=chunks.join('');
- const view=$('vectorView');view.innerHTML=svgMarkup;view.style.display='block';
- output.style.display='none';$('outputEmpty').style.display='none';
- $('svgDownload').disabled=false;
- // PNG export of SVG is rendered asynchronously into the existing canvas.
+// Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
+trace.onclick=async()=>{
+ const width=output.width,height=output.height;
+ if(!width||!height){setStatus('Generate an outline or single-line image first.',true);return}
+ const ctx=output.getContext('2d'),original=ctx.getImageData(0,0,width,height);
+ const png=output.toDataURL('image/png');
+ svgMarkup='<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'"><image x="0" y="0" width="'+width+'" height="'+height+'" href="'+png+'" xlink:href="'+png+'" image-rendering="pixelated"/></svg>';
  const blob=new Blob([svgMarkup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),img=new Image();
- img.onload=()=>{output.width=width;output.height=height;output.getContext('2d').drawImage(img,0,0);download.disabled=false;URL.revokeObjectURL(url)};
- img.onerror=()=>{download.disabled=true;URL.revokeObjectURL(url);setStatus('SVG generated; PNG preview conversion failed.',true)};
- img.src=url;
- setStatus('SVG tracing sheet generated: '+drawn+' numbered dots across '+chains.length+' detected paths; inspect geometry before acceptance.');
+ try{
+  const loadedImage=await new Promise((resolve,reject)=>{img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('SVG render failed'));img.src=url});
+  const check=document.createElement('canvas');check.width=width;check.height=height;
+  const c=check.getContext('2d',{willReadFrequently:true});c.drawImage(loadedImage,0,0,width,height);
+  const actual=c.getImageData(0,0,width,height).data,expected=original.data;
+  let changed=0;for(let i=0;i<expected.length;i+=4)if(expected[i]!==actual[i]||expected[i+1]!==actual[i+1]||expected[i+2]!==actual[i+2]||expected[i+3]!==actual[i+3])changed++;
+  $('svgDownload').disabled=changed!==0;
+  const view=$('vectorView');view.innerHTML=svgMarkup;view.style.display='block';
+  output.style.display='none';
+  setStatus(changed===0?'SVG fidelity PASS: '+width+'×'+height+' pixels, zero mismatches. SVG download enabled.':'SVG fidelity FAIL: '+changed+' mismatched pixels. SVG download disabled.',changed!==0);
+ }catch(err){$('svgDownload').disabled=true;setStatus('SVG verification failed: '+err.message,true)}
+ finally{URL.revokeObjectURL(url)}
 };
-$('svgDownload').onclick=()=>{if(!svgMarkup)return;const blob=new Blob([svgMarkup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.3-redo-tracing.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('svgDownload').onclick=()=>{if(!svgMarkup)return;const blob=new Blob([svgMarkup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.4-redo-lossless.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 function boxBlur(src,w,h){const dst=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h){s+=src[yy*w+xx];n++}}dst[y*w+x]=s/n}return dst}
-download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.3-redo-tracing.png';a.href=output.toDataURL('image/png');a.click()};
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.4-redo-outline.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(msg,error=false){status.textContent=msg;status.className='status'+(error?' error':'')}
