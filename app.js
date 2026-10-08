@@ -8,9 +8,9 @@ extract.onclick=()=>{if(loaded)extractOutline()};
 function extractOutline(){setStatus('Extracting outlines…');const px=source.getContext('2d').getImageData(0,0,W,H).data;let gray=new Float32Array(W*H);
  for(let i=0,p=0;i<px.length;i+=4,p++)gray[p]=.299*px[i]+.587*px[i+1]+.114*px[i+2];for(let k=0;k<+$('blur').value;k++)gray=boxBlur(gray,W,H);
  edge=new Uint8Array(W*H);const t=+$('threshold').value;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const i=y*W+x,gx=-gray[i-W-1]+gray[i-W+1]-2*gray[i-1]+2*gray[i+1]-gray[i+W-1]+gray[i+W+1],gy=-gray[i-W-1]-2*gray[i-W]-gray[i-W+1]+gray[i+W-1]+2*gray[i+W]+gray[i+W+1];edge[i]=Math.hypot(gx,gy)>=t?1:0}renderEdges();pathPoints=null;single.disabled=false;trace.disabled=false;download.disabled=false;setStatus('Outline extraction complete. You can now build one continuous pen path.')}
-function renderEdges(){svgMarkup='';$('vectorView').style.display='none';$('svgDownload').disabled=true;output.width=W;output.height=H;const o=output.getContext('2d'),im=o.createImageData(W,H);im.data.fill(255);const thick=+$('thickness').value;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(edge[y*W+x])for(let dy=-thick+1;dy<thick;dy++)for(let dx=-thick+1;dx<thick;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<W&&yy>=0&&yy<H){const q=(yy*W+xx)*4;im.data[q]=im.data[q+1]=im.data[q+2]=0;im.data[q+3]=255}}o.putImageData(im,0,0);output.style.display='block';$('outputEmpty').style.display='none'}
+function renderEdges(){clearSegments();svgMarkup='';$('vectorView').style.display='none';$('svgDownload').disabled=true;output.width=W;output.height=H;const o=output.getContext('2d'),im=o.createImageData(W,H);im.data.fill(255);const thick=+$('thickness').value;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(edge[y*W+x])for(let dy=-thick+1;dy<thick;dy++)for(let dx=-thick+1;dx<thick;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<W&&yy>=0&&yy<H){const q=(yy*W+xx)*4;im.data[q]=im.data[q+1]=im.data[q+2]=0;im.data[q+3]=255}}o.putImageData(im,0,0);output.style.display='block';$('outputEmpty').style.display='none'}
 single.onclick=()=>buildContinuousPath();
-function buildContinuousPath(){svgMarkup='';$('vectorView').style.display='none';$('svgDownload').disabled=true;output.style.display='block';if(!edge)return;setStatus('Building continuous pen path…');const pts=[];for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2)if(edge[y*W+x])pts.push({x,y});if(!pts.length){setStatus('No outline points found.',true);return}
+function buildContinuousPath(){clearSegments();svgMarkup='';$('vectorView').style.display='none';$('svgDownload').disabled=true;output.style.display='block';if(!edge)return;setStatus('Building continuous pen path…');const pts=[];for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2)if(edge[y*W+x])pts.push({x,y});if(!pts.length){setStatus('No outline points found.',true);return}
  const used=new Uint8Array(pts.length),path=[],cell=24,buckets=new Map(),key=(x,y)=>Math.floor(x/cell)+','+Math.floor(y/cell);
  pts.forEach((p,i)=>{const k=key(p.x,p.y);if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(i)});
  let cur=0;used[cur]=1;path.push(pts[cur]);for(let n=1;n<pts.length;n++){const p=pts[cur],cx=Math.floor(p.x/cell),cy=Math.floor(p.y/cell);let best=-1,bd=Infinity;
@@ -64,6 +64,45 @@ function geometryMarks(chains,target){
  return marks.sort((a,b)=>a.part-b.part||a.sub-b.sub);
 }
 let svgMarkup='';
+let segmentedMarkup='',segmentGroups=[];
+function clearSegments(){segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
+function buildSegments(){
+ const w=output.width,h=output.height;if(!w||!h)return;
+ const pixels=output.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data;
+ const mask=new Uint8Array(w*h);
+ for(let i=0;i<mask.length;i++){const k=i*4;mask[i]=(pixels[k]<128&&pixels[k+1]<128&&pixels[k+2]<128&&pixels[k+3]>127)?1:0}
+ const seen=new Uint8Array(mask.length),components=[],dirs=[-1,1,-w,w];
+ for(let seed=0;seed<mask.length;seed++)if(mask[seed]&&!seen[seed]){
+  const stack=[seed],items=[];seen[seed]=1;
+  while(stack.length){const i=stack.pop();items.push(i);const x=i%w;
+   for(const d of dirs){if(d===-1&&x===0||d===1&&x===w-1)continue;const j=i+d;if(j>=0&&j<mask.length&&mask[j]&&!seen[j]){seen[j]=1;stack.push(j)}}
+  }
+  components.push(items);
+ }
+ // Each connected pixel component becomes an independently toggled SVG group.
+ // Pixel-square paths reproduce the black foreground without thickening.
+ segmentGroups=components.map((items,i)=>{
+  items.sort((a,b)=>a-b);let d='',p=0;
+  while(p<items.length){const start=items[p],y=(start/w)|0,x=start%w;let len=1;p++;
+   while(p<items.length&&items[p]===start+len&&((items[p]/w)|0)===y){len++;p++}
+   d+='M'+x+' '+y+'h'+len+'v1h-'+len+'z';
+  }
+  return '<g id="segment-'+(i+1)+'" data-segment="'+(i+1)+'"><path d="'+d+'" fill="#000"/></g>';
+ });
+ segmentedMarkup='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="#fff"/>'+segmentGroups.join('')+'</svg>';
+ const view=$('vectorView');view.innerHTML=segmentedMarkup;view.style.display='block';output.style.display='none';
+ for(const id of ['allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=false;
+ $('segmentId').max=segmentGroups.length;
+ $('segmentInfo').textContent=segmentGroups.length+' independently selectable connected pixel components (raster-exact SVG geometry).';
+ setStatus('Segmented '+segmentGroups.length+' connected components. All visible. Individual geometric line segments are a future refinement.');
+}
+$('segment').onclick=buildSegments;
+function setAllSegments(visible){$('vectorView').querySelectorAll('[data-segment]').forEach(el=>el.style.display=visible?'':'none')}
+$('allOn').onclick=()=>setAllSegments(true);
+$('allOff').onclick=()=>setAllSegments(false);
+$('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView').querySelector('[data-segment="'+n+'"]');if(!el){setStatus('Segment ID not found.',true);return}el.style.display=el.style.display==='none'?'':'none'};
+$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.5-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
 trace.onclick=async()=>{
@@ -79,14 +118,14 @@ trace.onclick=async()=>{
   const c=check.getContext('2d',{willReadFrequently:true});c.drawImage(loadedImage,0,0,width,height);
   const actual=c.getImageData(0,0,width,height).data,expected=original.data;
   let changed=0;for(let i=0;i<expected.length;i+=4)if(expected[i]!==actual[i]||expected[i+1]!==actual[i+1]||expected[i+2]!==actual[i+2]||expected[i+3]!==actual[i+3])changed++;
-  $('svgDownload').disabled=changed!==0;
+  $('svgDownload').disabled=changed!==0;$('segment').disabled=changed!==0;
   const view=$('vectorView');view.innerHTML=svgMarkup;view.style.display='block';
   output.style.display='none';
   setStatus(changed===0?'SVG fidelity PASS: '+width+'×'+height+' pixels, zero mismatches. SVG download enabled.':'SVG fidelity FAIL: '+changed+' mismatched pixels. SVG download disabled.',changed!==0);
  }catch(err){$('svgDownload').disabled=true;setStatus('SVG verification failed: '+err.message,true)}
  finally{URL.revokeObjectURL(url)}
 };
-$('svgDownload').onclick=()=>{if(!svgMarkup)return;const blob=new Blob([svgMarkup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.4-redo-lossless.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('svgDownload').onclick=()=>{if(!svgMarkup)return;const blob=new Blob([svgMarkup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.5-redo-lossless.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 function boxBlur(src,w,h){const dst=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h){s+=src[yy*w+xx];n++}}dst[y*w+x]=s/n}return dst}
 download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.4-redo-outline.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(msg,error=false){status.textContent=msg;status.className='status'+(error?' error':'')}
