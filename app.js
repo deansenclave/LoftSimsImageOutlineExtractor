@@ -130,14 +130,14 @@ function numberLineSegments(){
  const degree=new Uint8Array(N),pixels=[];for(let i=0;i<N;i++)if(mask[i]){degree[i]=adjacency(i).length;pixels.push(i)}
  const used=new Set(),chains=[],key=(a,b)=>a<b?a*N+b:b*N+a;
  function walk(start,next){
-  const line=[start],local=new Set();let prev=start,cur=next;
+  const line=[start];let prev=start,cur=next;
   while(true){
    const k=key(prev,cur);if(used.has(k))break;used.add(k);line.push(cur);
    if(degree[cur]!==2)break;
    const opts=adjacency(cur).filter(v=>v!==prev&&!used.has(key(cur,v)));
    if(!opts.length)break;prev=cur;cur=opts[0];
   }
-  if(line.length>=7)chains.push(line.map(i=>({x:i%w,y:(i/w)|0})));
+  if(line.length>=2)chains.push(line.map(i=>({x:i%w,y:(i/w)|0})));
  }
  for(const i of pixels)if(degree[i]!==2)for(const j of adjacency(i))if(!used.has(key(i,j)))walk(i,j);
  for(const i of pixels)if(degree[i]===2)for(const j of adjacency(i))if(!used.has(key(i,j)))walk(i,j);
@@ -149,15 +149,15 @@ function numberLineSegments(){
    const a=chain[Math.max(start,k-4)],b=chain[k],c=chain[Math.min(chain.length-1,k+4)];
    const ax=b.x-a.x,ay=b.y-a.y,bx=c.x-b.x,by=c.y-b.y;
    const angle=Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(Math.hypot(ax,ay)*Math.hypot(bx,by)||1))));
-   if(angle>0.60&&k-start>=8){pieces.push(chain.slice(start,k+1));start=k;k+=3}
+   if(angle>0.60&&k-start>=4){pieces.push(chain.slice(start,k+1));start=k;k+=3}
   }
-  if(chain.length-start>=7)pieces.push(chain.slice(start));
+  if(chain.length-start>=2)pieces.push(chain.slice(start));
  }
- const eligible=pieces.map(c=>{let len=0;for(let i=1;i<c.length;i++)len+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return {c,len}}).filter(v=>v.len>=9);
+ const eligible=pieces.map(c=>{let len=0;for(let i=1;i<c.length;i++)len+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return {c,len}}).filter(v=>v.len>0);
  eligible.sort((a,b)=>a.c[0].y-b.c[0].y||a.c[0].x-b.c[0].x);
- const target=+$('target').value;
+ const target=$('target').value==='all'?Infinity:+$('target').value;
  // Target is a cap: never manufacture segments where no traceable geometry exists.
- const selected=eligible.slice(0,target),marks=[];
+ const selected=target===Infinity?eligible:eligible.slice(0,target),marks=[];
  for(const item of selected){const p=item.c[Math.floor(item.c.length/2)];marks.push({x:p.x,y:p.y})}
  // Keep the lossless reference SVG image untouched as the base layer.
  const base=output.toDataURL('image/png'),scale=4,pad=90,ww=w*scale+pad*2,hh=h*scale+pad*2;
@@ -178,7 +178,7 @@ function numberLineSegments(){
  const view=$('vectorView');view.innerHTML=numberedMarkup;view.style.display='block';output.style.display='none';
  $('numberedDownload').disabled=false;
  $('segmentInfo').textContent='Detected '+eligible.length+' candidate geometric pieces; labeled '+marks.length+'. The underlying raster image is preserved, but 4× scaling enlarges its strokes; vector centerline fidelity remains experimental.';
- setStatus('Numbered '+marks.length+' candidate line segments (target '+target+'). Inspect placement and segment identity.');
+ setStatus('Detected '+eligible.length+' candidate segments; numbered '+marks.length+'; unnumbered '+(eligible.length-marks.length)+'.');
 }
 $('numberSegments').onclick=numberLineSegments;
 $('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.6-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
