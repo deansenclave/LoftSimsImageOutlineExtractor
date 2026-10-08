@@ -1,11 +1,9 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.12-redo — responsive numbering prototype
+## v0.3.13-redo — independent clean SVG preview
 
-Preserves image intake, outline extraction, lossless SVG conversion and pixel comparison, segment inventory, experimental SVG segmentation controls, and SVG/PNG export. The previous v0.3.11-redo branch is retained as failed performance evidence.
+Adds **Preview clean SVG** between segment counting and numbering. It draws the detected skeleton centerlines as thin black vector strokes on a white SVG background without embedding gray raster pixels. This permits inspection of geometry *before* numbering. Preview rendering yields every 50 paths and supports cancellation through the existing Cancel numbering control. Numbering reuses the same vector-path renderer. Earlier features and branches are retained.
 
-Numbering now renders centerline paths and labels in batches of 50 with browser event-loop yields. Progress and **Cancel numbering** are available. A spatial index reduces label collision checking cost; local placement searches are capped. The SVG uses thin black vector paths on white rather than an enlarged gray raster. Detected candidates, placed labels, and omissions are reported.
+Workflow: Choose picture → Extract outlines → Convert displayed image to SVG (raster fidelity check) → Count line segments → Preview clean SVG → Number line segments → Download numbered SVG.
 
-**Limitations:** This reduces main-thread blocking but does not yet use a Web Worker. Counting and final SVG DOM insertion may still be expensive for very large images. Skeleton-based centerline extraction remains an approximation, not lossless; browser visual/performance testing is pending.
-
-Open index.html locally, Extract outlines, Convert displayed image to SVG, confirm PASS, Count line segments, Number line segments.
+**Validation pending:** Browser visual and performance tests. Counting still uses synchronous thinning, and large final SVG insertion can stall. Centerline geometry is heuristic and may fragment lines; removing gray pixels does not guarantee a faithful outline. The original lossless raster-embedded SVG remains separately available.
