@@ -1,11 +1,11 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.11-redo — clean centerline SVG and inventory-driven numbering
+## v0.3.12-redo — responsive numbering prototype
 
-Based on the v0.3.9-redo geometry inventory and numbering. All detected candidate segments are numbered; the previous arbitrary target cap is not applied. The numbered SVG now draws each detected centerline as a thin black vector path on white, rather than scaling up the gray raster. Blue dots identify segment midpoints. Labels are placed nearby without long leader lines, with collision checks and a placement-failure count.
+Preserves image intake, outline extraction, lossless SVG conversion and pixel comparison, segment inventory, experimental SVG segmentation controls, and SVG/PNG export. The previous v0.3.11-redo branch is retained as failed performance evidence.
 
-Preserved: picture intake, outline extraction, single-line path experiment, raster-exact SVG export and fidelity check, inventory, connected-component visibility tools, PNG/SVG downloads. The raster-exact SVG and the new vectorized numbered SVG are **different outputs**: the vector version is an approximation and does not inherit the pixel-exact fidelity PASS.
+Numbering now renders centerline paths and labels in batches of 50 with browser event-loop yields. Progress and **Cancel numbering** are available. A spatial index reduces label collision checking cost; local placement searches are capped. The SVG uses thin black vector paths on white rather than an enlarged gray raster. Detected candidates, placed labels, and omissions are reported.
 
-**Limitations:** Skeleton tracing may omit image detail or create spurs and discontinuities; clean vector paths are not guaranteed lossless. Dense regions can still cause label placement failures or labels covering linework. Segment inventory counts are heuristic. Visual validation required. Earlier branches remain available, including v0.3.9-redo.
+**Limitations:** This reduces main-thread blocking but does not yet use a Web Worker. Counting and final SVG DOM insertion may still be expensive for very large images. Skeleton-based centerline extraction remains an approximation, not lossless; browser visual/performance testing is pending.
 
-Open index.html locally; no build tools.
+Open index.html locally, Extract outlines, Convert displayed image to SVG, confirm PASS, Count line segments, Number line segments.
