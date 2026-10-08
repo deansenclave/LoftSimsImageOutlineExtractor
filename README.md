@@ -1,11 +1,9 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.14-redo — geometric candidate consolidation and shared IDs
+## v0.3.15-redo — preserve short traced geometry
 
-This experimental revision removes very short skeleton fragments (under 5 image pixels) from the candidate inventory, attempts to join near-collinear fragments sharing endpoints, and assigns stable IDs within the resulting inventory. Numbering defaults to the 200 longest candidates rather than forcing tens of thousands of labels; the All Segments option remains available. Blue text is reduced from 18 to 9 SVG units, and dots from radius 2.5 to 1.7. Numbering remains incremental and cancellable.
+Corrects two v0.3.14-redo continuity regressions: short traced pieces are no longer discarded by the five-pixel candidate filter, and subdivision no longer skips pixels following a split. The clean SVG preview, numbering, and geometric Segment SVG all consume the same preserved candidate inventory. Numbering remains capped at 200 by default; unnumbered paths remain visible. Previous versions are retained.
 
-**Segment SVG** now uses the same candidate geometry and IDs as Count and Number; Show all, Hide all, Toggle segment, and segmented SVG export act on candidate paths rather than raster-connected components.
+Workflow: load → Extract outlines → Convert displayed image to SVG → Count line segments → Preview clean SVG → Number line segments → Segment SVG.
 
-Workflow: load image → Extract outlines → Convert displayed image to SVG → Count line segments → Preview clean SVG → Number line segments or Segment SVG.
-
-**Limitations and test status:** Code pushed, browser visual/performance validation not yet performed. This is heuristic consolidation, not guaranteed identification of real-world line segments. Short detail can be excluded, complex junctions can remain fragmented, and numbering with All Segments can still be expensive. The earlier branches and raster-fidelity SVG remain preserved.
+**Important limitation:** This fixes identified causes of missing paths but does not yet bridge genuine gaps between separately detected contours. Sobel extraction, skeleton thinning, and junction tracing can still lose fidelity; no claim of full continuity or visual validation is made. Browser testing is pending.
