@@ -1,11 +1,17 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.17-redo — SVG suitability profiler and consolidation
+## v0.3.18-redo — reliable profiling and Diagnostics Footnotes
 
-After **Count line segments**, click **Profile SVG**. The profiler reports candidate segment count, connected groups, open endpoints, junctions, short fragments, largest connected group coverage, and a **heuristic suitability score from 1 to 10**. It projects a segment count and score after consolidation. Choose **Conservative**, **Balanced** (default), or **Aggressive**, then **Apply consolidation** to use the proposed exact-endpoint joins before previewing, numbering, or exporting geometric segments.
+### Changes
+- SVG profiling now uses union-find connectivity rather than a quadratic segment adjacency graph, reducing memory pressure for very large inventories.
+- A dedicated, readable SVG Profile / Diagnostics Footnotes panel reports candidate counts, connected contours, endpoints, junctions, short-fragment percentage, proposed consolidation reduction, and heuristic suitability score (1–10).
+- **Download Diagnostics Footnotes JSON** exports structured observations, proposals, assertions, and limitations.
+- Count-consistency checks compare the actual current inventory with the proposed consolidation result; Apply consolidation is disabled when checks fail.
+- Numbering reports the number of **selected** dots rather than all detected candidates.
+- Prior branches and SVG export capabilities remain available.
 
-Consolidation concatenates complete vertex paths at shared endpoints only, with a directional compatibility threshold. It does not delete individual source vertices or synthesize connections across gaps. Previously detected geometry is retained; the number of candidate segments may decrease. Numbering still defaults to 200 and can be set to All Segments. Existing numbering and Segment SVG operate on the current consolidated inventory.
+### Workflow
+Open index.html → load picture → Extract outlines → Convert displayed image to SVG → Count line segments → Profile SVG → optionally Apply consolidation → Preview clean SVG → Number line segments.
 
-**Important limitations:** Score is an experimental graph heuristic, not an independently validated 1–10 quality assessment. Consolidation does not repair disconnected source contours. Initial extraction and skeleton tracing are approximate; the tool cannot guarantee all source detail was recovered. Large drawings may remain computationally expensive. Browser visual/performance testing pending.
-
-Open index.html locally. Workflow: load → Extract outlines → Convert displayed image to SVG → Count line segments → Profile SVG → Apply consolidation (optional) → Preview clean SVG → Number line segments.
+### Remaining limitations
+The new profiler improves speed and observability, **not** underlying skeleton quality. Exact-endpoint consolidation may still produce negligible reduction for heavily fragmented artwork; no geometry is invented to force joins. The 1–10 suitability score is heuristic and not calibrated. Browser visual/performance tests remain pending. JavaScript syntax check passed, but this is not end-to-end validation.
