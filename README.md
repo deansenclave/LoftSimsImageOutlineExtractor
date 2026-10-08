@@ -1,11 +1,11 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.16-redo — contour-following numbering (experimental)
+## v0.3.17-redo — SVG suitability profiler and consolidation
 
-Replaces longest-first segment numbering with a deterministic adjacency traversal. Candidate geometric segments sharing an exact skeleton endpoint are grouped into traversal order, beginning with available free endpoints; branch choices prefer directional continuation and then a stable tie-break. Remaining loops and disconnected segments are processed in coordinate order. IDs are assigned once from that traversal and reused in Count, Number, and Segment SVG.
+After **Count line segments**, click **Profile SVG**. The profiler reports candidate segment count, connected groups, open endpoints, junctions, short fragments, largest connected group coverage, and a **heuristic suitability score from 1 to 10**. It projects a segment count and score after consolidation. Choose **Conservative**, **Balanced** (default), or **Aggressive**, then **Apply consolidation** to use the proposed exact-endpoint joins before previewing, numbering, or exporting geometric segments.
 
-The continuity-preservation changes from v0.3.15-redo, clean SVG preview, default 200 labels, small blue text/dots, and cancellable numbering remain.
+Consolidation concatenates complete vertex paths at shared endpoints only, with a directional compatibility threshold. It does not delete individual source vertices or synthesize connections across gaps. Previously detected geometry is retained; the number of candidate segments may decrease. Numbering still defaults to 200 and can be set to All Segments. Existing numbering and Segment SVG operate on the current consolidated inventory.
 
-**Known limitations:** Adjacency requires exact shared endpoints; nearby but disconnected contours are not reconnected. Junction traversal is heuristic, and a branch may be numbered after another branch or a separate start; this is not yet an optimized continuous-pen route. Browser visual/performance testing pending.
+**Important limitations:** Score is an experimental graph heuristic, not an independently validated 1–10 quality assessment. Consolidation does not repair disconnected source contours. Initial extraction and skeleton tracing are approximate; the tool cannot guarantee all source detail was recovered. Large drawings may remain computationally expensive. Browser visual/performance testing pending.
 
-Open index.html locally; Extract outlines → Convert displayed image to SVG → Count line segments → Preview clean SVG → Number line segments.
+Open index.html locally. Workflow: load → Extract outlines → Convert displayed image to SVG → Count line segments → Profile SVG → Apply consolidation (optional) → Preview clean SVG → Number line segments.
