@@ -153,15 +153,40 @@ function countLineSegments(){
   }
   if(chain.length-start>=2)pieces.push(chain.slice(start));
  }
- const eligible=pieces.map(c=>{let len=0;for(let i=1;i<c.length;i++)len+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return {c,len}}).filter(v=>v.len>0);
+
+ // Consolidate near-collinear chain fragments at shared endpoints, without bridging gaps.
+ const candidates=pieces.map(c=>({c,len:c.reduce((sum,p,i)=>i?sum+Math.hypot(p.x-c[i-1].x,p.y-c[i-1].y):0,0)})).filter(v=>v.len>=5);
+ const endpointKey=p=>p.x+','+p.y;
+ const endpointMap=new Map();
+ candidates.forEach((v,i)=>{for(const p of [v.c[0],v.c[v.c.length-1]]){const k=endpointKey(p);if(!endpointMap.has(k))endpointMap.set(k,[]);endpointMap.get(k).push(i)}});
+ const alive=new Uint8Array(candidates.length).fill(1);
+ const tangent=(c,atEnd)=>{const n=c.length;if(n<2)return [0,0];const a=atEnd?c[n-1]:c[0],b=atEnd?c[Math.max(0,n-5)]:c[Math.min(n-1,4)];const d=Math.hypot(a.x-b.x,a.y-b.y)||1;return [(a.x-b.x)/d,(a.y-b.y)/d]};
+ // Only merge endpoints with a near-straight continuation; cap iterations for stability.
+ for(let pass=0;pass<3;pass++){
+  let merged=0;
+  for(const [key,indices] of endpointMap){
+   const active=indices.filter(i=>alive[i]&&[endpointKey(candidates[i].c[0]),endpointKey(candidates[i].c.at(-1))].includes(key));
+   if(active.length!==2)continue;
+   const [ia,ib]=active,a=candidates[ia].c,b=candidates[ib].c;
+   const ae=endpointKey(a.at(-1))===key,be=endpointKey(b.at(-1))===key;
+   const ta=tangent(a,ae),tb=tangent(b,be),dot=ta[0]*tb[0]+ta[1]*tb[1];
+   if(dot>-.94)continue;
+   const left=ae?a:a.slice().reverse(),right=be?b.slice().reverse():b;
+   const joined=left.concat(right.slice(1));
+   candidates[ia]={c:joined,len:candidates[ia].len+candidates[ib].len};alive[ib]=0;merged++;
+   const other=endpointKey(joined.at(-1));if(!endpointMap.has(other))endpointMap.set(other,[]);endpointMap.get(other).push(ia);
+  }
+  if(!merged)break;
+ }
+ const eligible=candidates.filter((v,i)=>alive[i]).sort((a,b)=>b.len-a.len).map((v,i)=>({...v,id:i+1}));
 
  const straight=[],curved=[];
  for(const item of eligible){const c=item.c,a=c[0],b=c[c.length-1];let maxDeviation=0;const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy);
   for(const p of c){const dev=dist?Math.abs(dx*(a.y-p.y)-(a.x-p.x)*dy)/dist:Math.hypot(p.x-a.x,p.y-a.y);if(dev>maxDeviation)maxDeviation=dev}
   (maxDeviation>Math.max(1.5,item.len*0.06)?curved:straight).push(item);
  }
- segmentInventory={eligible,straight:straight.length,curved:curved.length,chains:chains.length,edgeCount:pixels.length};
- $('inventory').textContent='Detected candidate segments: '+eligible.length+' | Straight: '+straight.length+' | Curved: '+curved.length+' | Traced chains: '+chains.length+' | Skeleton pixels: '+pixels.length+'. Counts are estimates from the current geometry detector.';
+ segmentInventory={eligible,rawCount:pieces.length,straight:straight.length,curved:curved.length,chains:chains.length,edgeCount:pixels.length};
+ $('inventory').textContent='Raw fragments: '+pieces.length+' | Consolidated candidates: '+eligible.length+' | Straight: '+straight.length+' | Curved: '+curved.length+' | Traced chains: '+chains.length+' | Skeleton pixels: '+pixels.length+'. Counts are estimates from the current geometry detector.';
  $('numberSegments').disabled=eligible.length===0;$('cleanPreview').disabled=eligible.length===0;
  setStatus('Segment inventory ready: '+eligible.length+' candidates. Review before numbering.');
  return segmentInventory;
@@ -194,24 +219,25 @@ async function numberLineSegments(){
  const job=++numberJob,eligible=segmentInventory.eligible,w=W,h=H;
  const scale=4,pad=120,ww=w*scale+pad*2,hh=h*scale+pad*2;
  const total=eligible.length,parts=[svgStart(w,h,pad,scale)];
+ const requested=$('target').value;const limit=requested==='all'?total:Math.min(total,Number(requested)||200);
  const progress=$('numberProgress');progress.value=0;$('cancelNumber').disabled=false;$('numberSegments').disabled=true;$('numberedDownload').disabled=true;
  // Yield between bounded batches so Cancel and progress remain responsive.
- const update=async(n,stage)=>{progress.value=Math.round(n/Math.max(1,total)*100);setStatus(stage+' '+n+' / '+total);await yieldFrame();return job===numberJob};
+ const update=async(n,stage)=>{progress.value=Math.round(n/Math.max(1,stage==='Placing labels'?limit:total)*100);setStatus(stage+' '+n+' / '+(stage==='Placing labels'?limit:total));await yieldFrame();return job===numberJob};
  for(let i=0;i<total;i++){
   parts.push(svgPath(eligible[i].c,pad,scale));
   if(i%50===49&&!(await update(i+1,'Drawing clean centerlines')))return;
  }
  if(!(await update(total,'Drawing clean centerlines')))return;
  // Spatial occupancy index avoids comparing every label with every previous label.
- const cell=32,occupied=new Map(),font=18,grid=24;
+ const cell=20,occupied=new Map(),font=9,grid=12;
  const cellsFor=(x,y,w,h)=>{const cells=[];for(let cy=Math.floor(y/cell);cy<=Math.floor((y+h)/cell);cy++)for(let cx=Math.floor(x/cell);cx<=Math.floor((x+w)/cell);cx++)cells.push(cx+','+cy);return cells};
  const intersects=(a,b)=>a.x<b.x+b.w+4&&a.x+a.w+4>b.x&&a.y<b.y+b.h+4&&a.y+a.h+4>b.y;
  const overlaps=box=>cellsFor(box.x-4,box.y-4,box.w+8,box.h+8).some(k=>(occupied.get(k)||[]).some(b=>intersects(box,b)));
  const reserve=box=>{for(const k of cellsFor(box.x,box.y,box.w,box.h)){if(!occupied.has(k))occupied.set(k,[]);occupied.get(k).push(box)}};
  let placed=0,unplaced=0;
- for(let i=0;i<total;i++){
-  const c=eligible[i].c,p=c[Math.floor(c.length/2)],x=pad+p.x*scale,y=pad+p.y*scale,label=String(i+1),tw=label.length*11+8,th=23;
-  parts.push('<circle cx="'+x+'" cy="'+y+'" r="2.5" fill="#1477d2"/>');
+ for(let i=0;i<limit;i++){
+  const c=eligible[i].c,p=c[Math.floor(c.length/2)],x=pad+p.x*scale,y=pad+p.y*scale,label=String(i+1),tw=label.length*6+4,th=12;
+  parts.push('<circle cx="'+x+'" cy="'+y+'" r="1.7" fill="#1477d2"/>');
   let found=null;
   // Local placement only, without leader lines or unbounded searches.
   for(let ring=1;ring<=5&&!found;ring++){
@@ -225,16 +251,16 @@ async function numberLineSegments(){
   else unplaced++;
   if(i%50===49&&!(await update(i+1,'Placing labels')))return;
  }
- if(!(await update(total,'Placing labels')))return;
+ if(!(await update(limit,'Placing labels')))return;
  parts.push('</svg>');
  numberedMarkup=parts.join('');
  const view=$('vectorView');view.innerHTML=numberedMarkup;view.style.display='block';output.style.display='none';
  $('numberedDownload').disabled=false;$('cancelNumber').disabled=true;$('numberSegments').disabled=false;
- $('segmentInfo').textContent='Detected '+total+' candidates; numbered dots '+total+'; labels placed '+placed+'; labels omitted '+unplaced+'. Clean vector centerlines are experimental.';
+ $('segmentInfo').textContent='Detected '+total+' candidates; numbered dots '+total+'; labels placed '+placed+'; labels omitted '+unplaced+'; deliberately not numbered '+(total-limit)+'. Clean vector centerlines are experimental.';
  setStatus('Numbering completed: '+total+' dots, '+placed+' labels placed, '+unplaced+' label placement failures.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.13-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.14-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
