@@ -82,7 +82,7 @@ function setAllSegments(visible){$('vectorView').querySelectorAll('[data-segment
 $('allOn').onclick=()=>setAllSegments(true);
 $('allOff').onclick=()=>setAllSegments(false);
 $('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView').querySelector('[data-segment="'+n+'"]');if(!el){setStatus('Segment ID not found.',true);return}el.style.display=el.style.display==='none'?'':'none'};
-$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.14-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.15-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 
 let numberedMarkup='',segmentInventory=null;
@@ -122,7 +122,7 @@ function countLineSegments(){
  }
  for(const i of pixels)if(degree[i]!==2)for(const j of adjacency(i))if(!used.has(key(i,j)))walk(i,j);
  for(const i of pixels)if(degree[i]===2)for(const j of adjacency(i))if(!used.has(key(i,j)))walk(i,j);
- // Geometry-based subdivision: long paths get multiple numbered subsegments.
+ // Geometry-based subdivision: keep shared boundary points; do not skip geometry at splits.
  const pieces=[];
  for(const chain of chains){
   let start=0;
@@ -130,13 +130,13 @@ function countLineSegments(){
    const a=chain[Math.max(start,k-4)],b=chain[k],c=chain[Math.min(chain.length-1,k+4)];
    const ax=b.x-a.x,ay=b.y-a.y,bx=c.x-b.x,by=c.y-b.y;
    const angle=Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(Math.hypot(ax,ay)*Math.hypot(bx,by)||1))));
-   if(angle>0.60&&k-start>=4){pieces.push(chain.slice(start,k+1));start=k;k+=3}
+   if(angle>0.60&&k-start>=4){pieces.push(chain.slice(start,k+1));start=k}
   }
   if(chain.length-start>=2)pieces.push(chain.slice(start));
  }
 
- // Consolidate near-collinear chain fragments at shared endpoints, without bridging gaps.
- const candidates=pieces.map(c=>({c,len:c.reduce((sum,p,i)=>i?sum+Math.hypot(p.x-c[i-1].x,p.y-c[i-1].y):0,0)})).filter(v=>v.len>=5);
+ // Preserve every positive-length traced piece; never discard short geometry merely to reduce label count.\n // Consolidate near-collinear chain fragments at shared endpoints, without bridging gaps.
+ const candidates=pieces.map(c=>({c,len:c.reduce((sum,p,i)=>i?sum+Math.hypot(p.x-c[i-1].x,p.y-c[i-1].y):0,0)})).filter(v=>v.len>0);
  const endpointKey=p=>p.x+','+p.y;
  const endpointMap=new Map();
  candidates.forEach((v,i)=>{for(const p of [v.c[0],v.c[v.c.length-1]]){const k=endpointKey(p);if(!endpointMap.has(k))endpointMap.set(k,[]);endpointMap.get(k).push(i)}});
@@ -241,7 +241,7 @@ async function numberLineSegments(){
  setStatus('Numbering completed: '+total+' dots, '+placed+' labels placed, '+unplaced+' label placement failures.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.14-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.15-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
