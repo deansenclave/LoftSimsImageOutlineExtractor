@@ -1,12 +1,13 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.5-redo — SVG component visibility prototype
+## v0.3.6-redo — geometric numbering experiment
 
-Preserves v0.3.4-redo lossless embedded-image SVG workflow. After **SVG fidelity PASS**, select **Segment SVG** to build separate SVG groups from 4-connected dark foreground pixel components. Use Segment ID + Toggle segment or Show all / Hide all; export the current visibility state as SVG.
+**Primary new function: Number line segments.** Existing image intake, outline extraction, single-line path, lossless SVG conversion and independent component show/hide tools remain in the application.
 
-**Important limits:** this is an independently switchable **connected-pixel-component prototype**, not yet geometric centerline segmentation. Crossing lines may belong to the same component. Diagonal pixel connections may split into separate groups. The segmented representation thresholds pixels to black/white and therefore is **not guaranteed lossless**; the prior lossless SVG remains the fidelity reference. Do not treat this as accepted until visually tested.
+Workflow: Choose picture → Extract outlines → Convert displayed image to SVG (verify PASS) → Number line segments → Download numbered SVG.
 
-## Run
-Open index.html, choose image, Extract outlines, Convert displayed image to SVG, confirm PASS, then Segment SVG.
+The numbering algorithm applies iterative skeleton thinning, follows adjacent skeleton pixels into paths at endpoints and junctions, divides paths at larger direction changes, and numbers detected pieces in approximate reading order. Target tracing points (100–1000) acts as a maximum, not an exact quota. Each number has a small blue dot at a detected line coordinate.
 
-The previously user-validated v0.3.4-redo is preserved as a branch.
+**Validation pending:** This is a heuristic, not certified semantic straight/curve recognition. Fine intersections and text may create false segments; 4× raster enlargement can thicken displayed underlying strokes. The independently validated lossless SVG conversion is retained unchanged as the reference, and the segmentation experiment remains accessible. The numbered sheet is NOT yet validated as pixel-perfect or visually legible. Preserve previous release branches.
+
+Run: open index.html directly in browser, no Python or build process.
