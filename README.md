@@ -1,16 +1,11 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.8-redo — experimental numbering layout correction
+## v0.3.9-redo — segment inventory before numbering
 
-Supersedes the failed v0.3.7-redo as the active version on main. Preserves v0.3.6-redo as the prior working visual reference and v0.3.4-redo as the lossless SVG fidelity reference.
+Preserves prior image intake, outline extraction, single-line drawing, lossless SVG conversion, experimental component visibility, and numbering tools. New required sequence: **Extract outlines → Convert displayed image to SVG → SVG fidelity PASS → Count line segments → Review inventory → Number line segments**.
 
-- Number detected geometry in traversal order rather than sorting all pieces by image rows.
-- Use adaptive output enlargement (4×–16× based on label count).
-- Find label positions in 2D whitespace; reserve each label rectangle to reduce collisions.
-- Keep small blue dots on line coordinates and add leader lines for distant labels.
-- Report candidate count, placed labels, placement failures and target omissions.
-- Preserve image intake, extraction, single-line, lossless SVG and experimental visibility controls.
+Inventory reports total detected candidate segments, approximate straight/curved classification, traced chains, and skeleton pixels. Counting uses the same geometric detector that supplies the numbering operation, so the candidate count and numbering source remain aligned. A fresh extraction or SVG conversion invalidates the previous inventory.
 
-**Not validated:** the detector may still split/join geometric contours incorrectly; dense text may still cause layout failures. The underlying raster enlargement can increase apparent line thickness. Browser screenshot and acceptance testing required. The v0.3.7-redo branch is retained only as historical failed evidence, not the active release.
+**Known limitations:** These are heuristic candidate counts, not guaranteed unique semantic segments. Straight/curve classification uses maximum deviation from a segment chord. The older v0.3.8 label renderer (including distant leader lines) remains available but is **not accepted**; this version focuses on counting, not visual layout correction. The lossless SVG baseline remains unchanged. Browser validation pending.
 
-Open index.html locally. No build process.
+Run locally by opening index.html; no build tools required.
