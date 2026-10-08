@@ -65,7 +65,7 @@ function geometryMarks(chains,target){
 }
 let svgMarkup='';
 let segmentedMarkup='',segmentGroups=[];
-function clearSegments(){numberJob++;if($('cancelNumber'))$('cancelNumber').disabled=true;if($('cleanPreview'))$('cleanPreview').disabled=true;segmentInventory=null;$('countSegments').disabled=true;$('numberSegments').disabled=true;$('inventory').textContent='';$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
+function clearSegments(){profileResult=null;if($('profileReport'))$('profileReport').textContent='';if($('profileSvg'))$('profileSvg').disabled=true;if($('applyConsolidation'))$('applyConsolidation').disabled=true;numberJob++;if($('cancelNumber'))$('cancelNumber').disabled=true;if($('cleanPreview'))$('cleanPreview').disabled=true;segmentInventory=null;$('countSegments').disabled=true;$('numberSegments').disabled=true;$('inventory').textContent='';$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
 function buildSegments(){
  if(!segmentInventory){setStatus('Count line segments first to create geometric segment IDs.',true);return}
  const eligible=segmentInventory.eligible;
@@ -82,10 +82,70 @@ function setAllSegments(visible){$('vectorView').querySelectorAll('[data-segment
 $('allOn').onclick=()=>setAllSegments(true);
 $('allOff').onclick=()=>setAllSegments(false);
 $('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView').querySelector('[data-segment="'+n+'"]');if(!el){setStatus('Segment ID not found.',true);return}el.style.display=el.style.display==='none'?'':'none'};
-$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.16-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.17-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 
 let numberedMarkup='',segmentInventory=null;
+let profileResult=null;
+const endpointId=p=>p.x+','+p.y;
+function profileSegments(items){
+ const endpoints=new Map(),adj=Array.from({length:items.length},()=>new Set()),short=items.filter(v=>v.len<8).length;
+ items.forEach((item,i)=>{for(const p of [item.c[0],item.c.at(-1)]){const k=endpointId(p);if(!endpoints.has(k))endpoints.set(k,[]);endpoints.get(k).push(i)}});
+ for(const ids of endpoints.values())for(const a of ids)for(const b of ids)if(a!==b)adj[a].add(b);
+ const seen=new Uint8Array(items.length);let contours=0,largest=0;
+ for(let i=0;i<items.length;i++)if(!seen[i]){contours++;let size=0,stack=[i];seen[i]=1;while(stack.length){const j=stack.pop();size++;for(const k of adj[j])if(!seen[k]){seen[k]=1;stack.push(k)}}largest=Math.max(largest,size)}
+ const open=[...endpoints.values()].filter(v=>v.length===1).length,junctions=[...endpoints.values()].filter(v=>v.length>2).length;
+ const coverage=items.length?largest/items.length:0,shortRatio=items.length?short/items.length:0;
+ const score=Math.max(1,Math.min(10,Math.round(1+5*coverage+3*(1-shortRatio)+Math.min(1,items.length/Math.max(1,contours))*1- Math.min(2,junctions/Math.max(1,items.length)*8))));
+ return {segments:items.length,contours,open,junctions,short,coverage,score};
+}
+function consolidateSegments(items,mode){
+ // Join only at exact shared endpoints. Preserve every vertex and all path lengths.
+ const threshold={conservative:-0.985,balanced:-0.94,aggressive:-0.82}[mode]??-.94;
+ const paths=items.map(v=>v.c.slice()),alive=new Uint8Array(paths.length).fill(1);
+ const key=p=>endpointId(p);
+ const direction=(c,end)=>{const a=end?c.at(-1):c[0],b=end?c[Math.max(0,c.length-4)]:c[Math.min(c.length-1,3)],d=Math.hypot(a.x-b.x,a.y-b.y)||1;return [(a.x-b.x)/d,(a.y-b.y)/d]};
+ let merges=0;
+ for(let pass=0;pass<4;pass++){
+  const map=new Map();
+  paths.forEach((c,i)=>{if(!alive[i])return;for(const p of [c[0],c.at(-1)]){const k=key(p);if(!map.has(k))map.set(k,[]);map.get(k).push(i)}});
+  let changed=0;
+  for(const [k,ids] of map){const active=[...new Set(ids)].filter(i=>alive[i]);if(active.length!==2)continue;
+   const [a,b]=active,ca=paths[a],cb=paths[b],ae=key(ca.at(-1))===k,be=key(cb.at(-1))===k;
+   const da=direction(ca,ae),db=direction(cb,be);
+   if(da[0]*db[0]+da[1]*db[1]>threshold)continue;
+   const left=ae?ca:ca.slice().reverse(),right=be?cb.slice().reverse():cb;
+   paths[a]=left.concat(right.slice(1));alive[b]=0;changed++;merges++;
+  }
+  if(!changed)break;
+ }
+ const result=paths.filter((_,i)=>alive[i]).map(c=>({c,len:c.reduce((v,p,i)=>v+(i?Math.hypot(p.x-c[i-1].x,p.y-c[i-1].y):0),0)}));
+ return {result,merges};
+}
+function renderProfile(){
+ if(!segmentInventory)return;
+ const before=profileSegments(segmentInventory.eligible),mode=$('consolidation').value,proposal=consolidateSegments(segmentInventory.eligible,mode),after=profileSegments(proposal.result);
+ profileResult={before,after,proposal,mode};
+ $('profileReport').textContent='SVG profile | Suitability '+before.score+'/10 | Segments '+before.segments+' | Contours '+before.contours+' | Open endpoints '+before.open+' | Junctions '+before.junctions+' | Short fragments '+before.short+' | Largest connected group '+Math.round(before.coverage*100)+'% | Proposed '+mode+' consolidation: '+after.segments+' segments ('+proposal.merges+' joins), projected score '+after.score+'/10. No paths discarded; shared endpoint vertices retained. Score is heuristic.';
+ $('applyConsolidation').disabled=proposal.merges===0;
+ setStatus('SVG profile complete. Review projected counts before applying consolidation.');
+}
+$('profileSvg').onclick=renderProfile;
+$('consolidation').onchange=()=>{if(segmentInventory)renderProfile()};
+$('applyConsolidation').onclick=()=>{
+ if(!profileResult||!segmentInventory)return;
+ const {proposal}=profileResult;
+ // Retain the complete geometry, assigning IDs in the existing traversal order.
+ const eligible=proposal.result.map((v,i)=>({...v,id:i+1}));
+ segmentInventory.eligible=eligible;
+ segmentInventory.straight=eligible.filter(v=>{const a=v.c[0],b=v.c.at(-1),dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);return v.c.every(p=>(d?Math.abs(dx*(a.y-p.y)-(a.x-p.x)*dy)/d:0)<=Math.max(1.5,v.len*.06))}).length;
+ segmentInventory.curved=eligible.length-segmentInventory.straight;
+ $('inventory').textContent='Consolidated candidate segments: '+eligible.length+' | Straight: '+segmentInventory.straight+' | Curved: '+segmentInventory.curved+'. All original traced vertices retained.';
+ $('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];
+ for(const id of ['allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;
+ renderProfile();setStatus('Consolidation applied: '+eligible.length+' segments. Preview or number to inspect.');
+};
+
 function countLineSegments(){
  if(!edge||!W||!H){setStatus('Extract outlines first.',true);return}
  const w=W,h=H,N=w*h,mask=new Uint8Array(edge),neighbors=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
@@ -213,7 +273,7 @@ function countLineSegments(){
  segmentInventory={eligible,rawCount:pieces.length,straight:straight.length,curved:curved.length,chains:chains.length,edgeCount:pixels.length};
  $('inventory').textContent='Raw fragments: '+pieces.length+' | Consolidated candidates: '+eligible.length+' | Straight: '+straight.length+' | Curved: '+curved.length+' | Traced chains: '+chains.length+' | Skeleton pixels: '+pixels.length+'. Counts are estimates from the current geometry detector.';
  $('numberSegments').disabled=eligible.length===0;$('cleanPreview').disabled=eligible.length===0;$('segment').disabled=eligible.length===0;
- setStatus('Segment inventory ready: '+eligible.length+' candidates. Review before numbering.');
+ $('profileSvg').disabled=eligible.length===0;$('applyConsolidation').disabled=true;profileResult=null;$('profileReport').textContent='';setStatus('Segment inventory ready: '+eligible.length+' candidates. Run Profile SVG before numbering.');
  return segmentInventory;
 }
 $('countSegments').onclick=countLineSegments;
@@ -285,7 +345,7 @@ async function numberLineSegments(){
  setStatus('Numbering completed: '+total+' dots, '+placed+' labels placed, '+unplaced+' label placement failures.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.16-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.17-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
