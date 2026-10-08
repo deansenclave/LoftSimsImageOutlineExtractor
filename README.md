@@ -1,15 +1,14 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.3-redo — SVG tracing sheet (experimental)
+## v0.3.4-redo — fidelity-first SVG conversion
 
-- Preserves user-validated v0.3.0 in branch `v0.3.0-rebuilt-working`.
-- Original PNG/JPG/WebP intake and Sobel extraction retained.
-- SVG path output from the graph-based connected contour traces.
-- Fixed **1 px** SVG path stroke at 4× geometry size (no thickness multiplication).
-- Numbered blue dots centered on the traced path coordinates; blue numbers offset above/below without cutting the path.
-- Download SVG and PNG. Target point choices: 100–1000.
+This version isolates SVG fidelity, postponing numbering and path vectorization.
 
-**Not yet validated:** graph tracing can create spurious branches and double edges on dense drawings. The target is approximate, and labels may overlap nearby contours or one another. This is not yet reliable vector simplification or curve classification. Test with representative images before acceptance.
+1. Choose an image and **Extract outlines**. Optionally **Build single-line path**.
+2. Click **Convert displayed image to SVG**.
+3. The app embeds the exact current canvas PNG in an SVG image element and rasterizes it back to a canvas at original dimensions.
+4. It compares every RGBA pixel. **Download SVG** is enabled only if the pixel comparison reports zero mismatches.
 
-## Run
-Open `index.html`; choose picture, Extract outlines, then Build tracing plan. No build tools required.
+This is **lossless SVG packaging of raster pixels**, not editable vector paths. Enlarging it does not create new detail. True vector path reconstruction is a separate future step requiring its own fidelity comparison. Original user-validated v0.3.0 is preserved as branch `v0.3.0-rebuilt-working`.
+
+Run by opening `index.html` locally. No build tools required. Browser acceptance test pending.
