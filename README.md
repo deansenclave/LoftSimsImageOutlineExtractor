@@ -1,16 +1,15 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.2-redo — experimental target tracing points
+## v0.3.3-redo — SVG tracing sheet (experimental)
 
-The user-validated v0.3.0 baseline is preserved on branch `v0.3.0-rebuilt-working`.
+- Preserves user-validated v0.3.0 in branch `v0.3.0-rebuilt-working`.
+- Original PNG/JPG/WebP intake and Sobel extraction retained.
+- SVG path output from the graph-based connected contour traces.
+- Fixed **1 px** SVG path stroke at 4× geometry size (no thickness multiplication).
+- Numbered blue dots centered on the traced path coordinates; blue numbers offset above/below without cutting the path.
+- Download SVG and PNG. Target point choices: 100–1000.
 
-- Target control: 100, 200, 300, 400, 500, 750, 1000.
-- Walks adjacent Sobel edge pixels as graph paths instead of numbering row-wise pixel runs.
-- Distributes target points across retained paths by path length.
-- 4× tracing sheet, offset numeric labels and leader lines.
-- Preserves original file intake, extraction and single-line path functionality.
-
-**Limitations:** This is a heuristic graph trace, not validated geometric straight/curve classification. Dense crossings, text and double edges may produce spurious paths. Alphabetical curve subdivisions are not implemented yet. Requested count is a target and actual labels may be fewer. Browser/visual acceptance testing remains pending.
+**Not yet validated:** graph tracing can create spurious branches and double edges on dense drawings. The target is approximate, and labels may overlap nearby contours or one another. This is not yet reliable vector simplification or curve classification. Test with representative images before acceptance.
 
 ## Run
-Open `index.html` locally. Choose image → Extract outlines → Build tracing plan. No Python/build tools.
+Open `index.html`; choose picture, Extract outlines, then Build tracing plan. No build tools required.
