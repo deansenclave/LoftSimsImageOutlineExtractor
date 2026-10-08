@@ -1,13 +1,11 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.6-redo — geometric numbering experiment
+## v0.3.7-redo — expanded numbering coverage
 
-**Primary new function: Number line segments.** Existing image intake, outline extraction, single-line path, lossless SVG conversion and independent component show/hide tools remain in the application.
+Preserves v0.3.6-redo numbering and earlier image intake, outline extraction, lossless SVG conversion, SVG/PNG downloads and experimental segment visibility.
 
-Workflow: Choose picture → Extract outlines → Convert displayed image to SVG (verify PASS) → Number line segments → Download numbered SVG.
+New **All Segments** target mode removes the 100–1000 numbering cap. The tracing walker now retains short paths of at least two pixels, and the geometric subdivision threshold is reduced. Status reports candidate detected segments, numbered segments and unnumbered candidates. Existing target options remain available for selective numbering.
 
-The numbering algorithm applies iterative skeleton thinning, follows adjacent skeleton pixels into paths at endpoints and junctions, divides paths at larger direction changes, and numbers detected pieces in approximate reading order. Target tracing points (100–1000) acts as a maximum, not an exact quota. Each number has a small blue dot at a detected line coordinate.
+**Limitations:** detection is heuristic; not every physical or semantic line is necessarily identified. All Segments can create a large SVG with overlapping labels. Zero unnumbered *detected* candidates does not prove full geometric coverage. Visual validation is pending. The v0.3.6-redo branch remains available as the working reference.
 
-**Validation pending:** This is a heuristic, not certified semantic straight/curve recognition. Fine intersections and text may create false segments; 4× raster enlargement can thicken displayed underlying strokes. The independently validated lossless SVG conversion is retained unchanged as the reference, and the segmentation experiment remains accessible. The numbered sheet is NOT yet validated as pixel-perfect or visually legible. Preserve previous release branches.
-
-Run: open index.html directly in browser, no Python or build process.
+Open index.html locally; no build process.
