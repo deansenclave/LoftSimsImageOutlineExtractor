@@ -65,7 +65,7 @@ function geometryMarks(chains,target){
 }
 let svgMarkup='';
 let segmentedMarkup='',segmentGroups=[];
-function clearSegments(){segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
+function clearSegments(){$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
 function buildSegments(){
  const w=output.width,h=output.height;if(!w||!h)return;
  const pixels=output.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data;
@@ -103,6 +103,86 @@ $('allOff').onclick=()=>setAllSegments(false);
 $('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView').querySelector('[data-segment="'+n+'"]');if(!el){setStatus('Segment ID not found.',true);return}el.style.display=el.style.display==='none'?'':'none'};
 $('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.5-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
+
+let numberedMarkup='';
+function numberLineSegments(){
+ if(!edge||!W||!H){setStatus('Extract outlines first.',true);return}
+ const w=W,h=H,N=w*h,mask=new Uint8Array(edge),neighbors=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+ // Zhang-Suen thinning: collapse thick Sobel traces to single-pixel skeletons.
+ for(let iter=0;iter<35;iter++){
+  let changed=0;
+  for(let pass=0;pass<2;pass++){
+   const remove=[];
+   for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+    const i=y*w+x;if(!mask[i])continue;
+    const p=[mask[i-w],mask[i-w+1],mask[i+1],mask[i+w+1],mask[i+w],mask[i+w-1],mask[i-1],mask[i-w-1]];
+    const n=p.reduce((a,b)=>a+b,0);if(n<2||n>6)continue;
+    let turns=0;for(let k=0;k<8;k++)if(!p[k]&&p[(k+1)%8])turns++;
+    if(turns!==1)continue;
+    if(pass===0?(p[0]*p[2]*p[4]||p[2]*p[4]*p[6]):(p[0]*p[2]*p[6]||p[0]*p[4]*p[6]))continue;
+    remove.push(i);
+   }
+   for(const i of remove)mask[i]=0;changed+=remove.length;
+  }
+  if(!changed)break;
+ }
+ const adjacency=i=>{const x=i%w,y=(i/w)|0,out=[];for(const [dx,dy] of neighbors){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h&&mask[yy*w+xx])out.push(yy*w+xx)}return out};
+ const degree=new Uint8Array(N),pixels=[];for(let i=0;i<N;i++)if(mask[i]){degree[i]=adjacency(i).length;pixels.push(i)}
+ const used=new Set(),chains=[],key=(a,b)=>a<b?a*N+b:b*N+a;
+ function walk(start,next){
+  const line=[start],local=new Set();let prev=start,cur=next;
+  while(true){
+   const k=key(prev,cur);if(used.has(k))break;used.add(k);line.push(cur);
+   if(degree[cur]!==2)break;
+   const opts=adjacency(cur).filter(v=>v!==prev&&!used.has(key(cur,v)));
+   if(!opts.length)break;prev=cur;cur=opts[0];
+  }
+  if(line.length>=7)chains.push(line.map(i=>({x:i%w,y:(i/w)|0})));
+ }
+ for(const i of pixels)if(degree[i]!==2)for(const j of adjacency(i))if(!used.has(key(i,j)))walk(i,j);
+ for(const i of pixels)if(degree[i]===2)for(const j of adjacency(i))if(!used.has(key(i,j)))walk(i,j);
+ // Geometry-based subdivision: long paths get multiple numbered subsegments.
+ const pieces=[];
+ for(const chain of chains){
+  let start=0;
+  for(let k=4;k<chain.length-4;k++){
+   const a=chain[Math.max(start,k-4)],b=chain[k],c=chain[Math.min(chain.length-1,k+4)];
+   const ax=b.x-a.x,ay=b.y-a.y,bx=c.x-b.x,by=c.y-b.y;
+   const angle=Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(Math.hypot(ax,ay)*Math.hypot(bx,by)||1))));
+   if(angle>0.60&&k-start>=8){pieces.push(chain.slice(start,k+1));start=k;k+=3}
+  }
+  if(chain.length-start>=7)pieces.push(chain.slice(start));
+ }
+ const eligible=pieces.map(c=>{let len=0;for(let i=1;i<c.length;i++)len+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return {c,len}}).filter(v=>v.len>=9);
+ eligible.sort((a,b)=>a.c[0].y-b.c[0].y||a.c[0].x-b.c[0].x);
+ const target=+$('target').value;
+ // Target is a cap: never manufacture segments where no traceable geometry exists.
+ const selected=eligible.slice(0,target),marks=[];
+ for(const item of selected){const p=item.c[Math.floor(item.c.length/2)];marks.push({x:p.x,y:p.y})}
+ // Keep the lossless reference SVG image untouched as the base layer.
+ const base=output.toDataURL('image/png'),scale=4,pad=90,ww=w*scale+pad*2,hh=h*scale+pad*2;
+ const parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+ww+'" height="'+hh+'" viewBox="0 0 '+ww+' '+hh+'"><rect width="100%" height="100%" fill="white"/>','<image href="'+base+'" x="'+pad+'" y="'+pad+'" width="'+w*scale+'" height="'+h*scale+'" image-rendering="pixelated"/>'];
+ const occupied=new Set(),grid=28,columns=Math.ceil(ww/grid);
+ marks.forEach((p,i)=>{
+  const x=pad+p.x*scale,y=pad+p.y*scale;
+  parts.push('<circle cx="'+x+'" cy="'+y+'" r="3" fill="#1477d2"/>');
+  let pos=null;
+  for(let r=1;r<=12&&!pos;r++)for(const sign of [-1,1]){
+   const xx=x,yy=y+sign*r*grid,cx=Math.round(xx/grid),cy=Math.round(yy/grid),k=cy*columns+cx;
+   if(yy<20||yy>hh-20||occupied.has(k))continue;occupied.add(k);pos={x:xx,y:yy};
+   break;
+  }
+  if(pos)parts.push('<text x="'+pos.x+'" y="'+pos.y+'" font-size="18" font-family="Arial,sans-serif" fill="#1477d2" text-anchor="middle">'+(i+1)+'</text>');
+ });
+ parts.push('</svg>');numberedMarkup=parts.join('');
+ const view=$('vectorView');view.innerHTML=numberedMarkup;view.style.display='block';output.style.display='none';
+ $('numberedDownload').disabled=false;
+ $('segmentInfo').textContent='Detected '+eligible.length+' candidate geometric pieces; labeled '+marks.length+'. The underlying raster image is preserved, but 4× scaling enlarges its strokes; vector centerline fidelity remains experimental.';
+ setStatus('Numbered '+marks.length+' candidate line segments (target '+target+'). Inspect placement and segment identity.');
+}
+$('numberSegments').onclick=numberLineSegments;
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.6-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
 trace.onclick=async()=>{
@@ -118,7 +198,7 @@ trace.onclick=async()=>{
   const c=check.getContext('2d',{willReadFrequently:true});c.drawImage(loadedImage,0,0,width,height);
   const actual=c.getImageData(0,0,width,height).data,expected=original.data;
   let changed=0;for(let i=0;i<expected.length;i+=4)if(expected[i]!==actual[i]||expected[i+1]!==actual[i+1]||expected[i+2]!==actual[i+2]||expected[i+3]!==actual[i+3])changed++;
-  $('svgDownload').disabled=changed!==0;$('segment').disabled=changed!==0;
+  $('svgDownload').disabled=changed!==0;$('segment').disabled=changed!==0;$('numberSegments').disabled=changed!==0;
   const view=$('vectorView');view.innerHTML=svgMarkup;view.style.display='block';
   output.style.display='none';
   setStatus(changed===0?'SVG fidelity PASS: '+width+'×'+height+' pixels, zero mismatches. SVG download enabled.':'SVG fidelity FAIL: '+changed+' mismatched pixels. SVG download disabled.',changed!==0);
@@ -127,5 +207,5 @@ trace.onclick=async()=>{
 };
 $('svgDownload').onclick=()=>{if(!svgMarkup)return;const blob=new Blob([svgMarkup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.5-redo-lossless.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 function boxBlur(src,w,h){const dst=new Float32Array(src.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h){s+=src[yy*w+xx];n++}}dst[y*w+x]=s/n}return dst}
-download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.4-redo-outline.png';a.href=output.toDataURL('image/png');a.click()};
+download.onclick=()=>{const a=document.createElement('a');a.download='loftsims-v0.3.6-redo-outline.png';a.href=output.toDataURL('image/png');a.click()};
 function setStatus(msg,error=false){status.textContent=msg;status.className='status'+(error?' error':'')}
