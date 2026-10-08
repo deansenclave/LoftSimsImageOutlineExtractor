@@ -154,34 +154,52 @@ function numberLineSegments(){
   if(chain.length-start>=2)pieces.push(chain.slice(start));
  }
  const eligible=pieces.map(c=>{let len=0;for(let i=1;i<c.length;i++)len+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return {c,len}}).filter(v=>v.len>0);
- eligible.sort((a,b)=>a.c[0].y-b.c[0].y||a.c[0].x-b.c[0].x);
+
+ // Order connected paths first; retain each path's natural traversal direction.
+ // This avoids the previous global row-wise ordering of disconnected pieces.
  const target=$('target').value==='all'?Infinity:+$('target').value;
- // Target is a cap: never manufacture segments where no traceable geometry exists.
- const selected=target===Infinity?eligible:eligible.slice(0,target),marks=[];
- for(const item of selected){const p=item.c[Math.floor(item.c.length/2)];marks.push({x:p.x,y:p.y})}
- // Keep the lossless reference SVG image untouched as the base layer.
- const base=output.toDataURL('image/png'),scale=4,pad=90,ww=w*scale+pad*2,hh=h*scale+pad*2;
+ const selected=target===Infinity?eligible:eligible.slice(0,target);
+ const marks=selected.map(item=>item.c[Math.floor(item.c.length/2)]);
+ const base=output.toDataURL('image/png'),scale=Math.max(4,Math.min(16,Math.ceil(Math.sqrt(marks.length/200)*4))),pad=120;
+ const ww=w*scale+2*pad,hh=h*scale+2*pad;
  const parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+ww+'" height="'+hh+'" viewBox="0 0 '+ww+' '+hh+'"><rect width="100%" height="100%" fill="white"/>','<image href="'+base+'" x="'+pad+'" y="'+pad+'" width="'+w*scale+'" height="'+h*scale+'" image-rendering="pixelated"/>'];
- const occupied=new Set(),grid=28,columns=Math.ceil(ww/grid);
+ // Reserve actual label rectangles, not just a single grid cell.
+ const boxes=[],font=18;
+ const overlaps=(x,y,width,height)=>boxes.some(b=>x<b.x+b.w+5&&x+width+5>b.x&&y<b.y+b.h+5&&y+height+5>b.y);
+ let placed=0,unplaced=0;
  marks.forEach((p,i)=>{
-  const x=pad+p.x*scale,y=pad+p.y*scale;
+  const x=pad+p.x*scale,y=pad+p.y*scale,label=String(i+1),tw=label.length*11+8,th=23;
   parts.push('<circle cx="'+x+'" cy="'+y+'" r="3" fill="#1477d2"/>');
-  let pos=null;
-  for(let r=1;r<=12&&!pos;r++)for(const sign of [-1,1]){
-   const xx=x,yy=y+sign*r*grid,cx=Math.round(xx/grid),cy=Math.round(yy/grid),k=cy*columns+cx;
-   if(yy<20||yy>hh-20||occupied.has(k))continue;occupied.add(k);pos={x:xx,y:yy};
-   break;
+  let found=null;
+  // Search an expanding spiral in two dimensions; labels can move into whitespace.
+  for(let ring=1;ring<=Math.ceil(Math.max(ww,hh)/26)&&!found;ring++){
+   for(let k=-ring;k<=ring&&!found;k++){
+    for(const [dx,dy] of [[k,-ring],[k,ring],[-ring,k],[ring,k]]){
+     const cx=x+dx*26,cy=y+dy*26,rx=cx-tw/2,ry=cy-th;
+     if(rx<6||rx+tw>ww-6||ry<6||ry+th>hh-6||overlaps(rx,ry,tw,th))continue;
+     // Avoid placing text on top of any original dark line pixels.
+     let clear=true;
+     for(let sy=ry;sy<=ry+th&&clear;sy+=5)for(let sx=rx;sx<=rx+tw;sx+=5){
+      const px=Math.floor((sx-pad)/scale),py=Math.floor((sy-pad)/scale);
+      if(px>=0&&px<w&&py>=0&&py<h&&edge[py*w+px]){clear=false;break}
+     }
+     if(clear)found={cx,cy,rx,ry};
+    }
+   }
   }
-  if(pos)parts.push('<text x="'+pos.x+'" y="'+pos.y+'" font-size="18" font-family="Arial,sans-serif" fill="#1477d2" text-anchor="middle">'+(i+1)+'</text>');
+  if(!found){unplaced++;return}
+  boxes.push({x:found.rx,y:found.ry,w:tw,h:th});placed++;
+  if(Math.hypot(found.cx-x,found.cy-y)>38)parts.push('<path d="M'+x+' '+y+'L'+found.cx+' '+(found.cy-7)+'" stroke="#1477d2" stroke-width=".6" fill="none"/>');
+  parts.push('<text x="'+found.cx+'" y="'+found.cy+'" font-size="'+font+'" font-family="Arial,sans-serif" fill="#1477d2" text-anchor="middle">'+label+'</text>');
  });
  parts.push('</svg>');numberedMarkup=parts.join('');
  const view=$('vectorView');view.innerHTML=numberedMarkup;view.style.display='block';output.style.display='none';
  $('numberedDownload').disabled=false;
- $('segmentInfo').textContent='Detected '+eligible.length+' candidate geometric pieces; labeled '+marks.length+'. The underlying raster image is preserved, but 4× scaling enlarges its strokes; vector centerline fidelity remains experimental.';
- setStatus('Detected '+eligible.length+' candidate segments; numbered '+marks.length+'; unnumbered '+(eligible.length-marks.length)+'.');
+ $('segmentInfo').textContent='Detected '+eligible.length+' candidate geometric pieces; labels placed '+placed+'; placement failures '+unplaced+'. The underlying raster image is preserved, but 4× scaling enlarges its strokes; vector centerline fidelity remains experimental.';
+ setStatus('Detected '+eligible.length+' candidate segments; labels placed '+placed+'; label placement failures '+unplaced+'; target omissions '+(eligible.length-selected.length)+'.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.6-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.8-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
