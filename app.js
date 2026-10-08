@@ -67,41 +67,22 @@ let svgMarkup='';
 let segmentedMarkup='',segmentGroups=[];
 function clearSegments(){numberJob++;if($('cancelNumber'))$('cancelNumber').disabled=true;if($('cleanPreview'))$('cleanPreview').disabled=true;segmentInventory=null;$('countSegments').disabled=true;$('numberSegments').disabled=true;$('inventory').textContent='';$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
 function buildSegments(){
- const w=output.width,h=output.height;if(!w||!h)return;
- const pixels=output.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data;
- const mask=new Uint8Array(w*h);
- for(let i=0;i<mask.length;i++){const k=i*4;mask[i]=(pixels[k]<128&&pixels[k+1]<128&&pixels[k+2]<128&&pixels[k+3]>127)?1:0}
- const seen=new Uint8Array(mask.length),components=[],dirs=[-1,1,-w,w];
- for(let seed=0;seed<mask.length;seed++)if(mask[seed]&&!seen[seed]){
-  const stack=[seed],items=[];seen[seed]=1;
-  while(stack.length){const i=stack.pop();items.push(i);const x=i%w;
-   for(const d of dirs){if(d===-1&&x===0||d===1&&x===w-1)continue;const j=i+d;if(j>=0&&j<mask.length&&mask[j]&&!seen[j]){seen[j]=1;stack.push(j)}}
-  }
-  components.push(items);
- }
- // Each connected pixel component becomes an independently toggled SVG group.
- // Pixel-square paths reproduce the black foreground without thickening.
- segmentGroups=components.map((items,i)=>{
-  items.sort((a,b)=>a-b);let d='',p=0;
-  while(p<items.length){const start=items[p],y=(start/w)|0,x=start%w;let len=1;p++;
-   while(p<items.length&&items[p]===start+len&&((items[p]/w)|0)===y){len++;p++}
-   d+='M'+x+' '+y+'h'+len+'v1h-'+len+'z';
-  }
-  return '<g id="segment-'+(i+1)+'" data-segment="'+(i+1)+'"><path d="'+d+'" fill="#000"/></g>';
- });
- segmentedMarkup='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><rect width="100%" height="100%" fill="#fff"/>'+segmentGroups.join('')+'</svg>';
+ if(!segmentInventory){setStatus('Count line segments first to create geometric segment IDs.',true);return}
+ const eligible=segmentInventory.eligible;
+ segmentGroups=eligible.map((item,i)=>'<g id="segment-'+(i+1)+'" data-segment="'+(i+1)+'">'+svgPath(item.c,0,1)+'</g>');
+ segmentedMarkup='<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'"><rect width="100%" height="100%" fill="white"/>'+segmentGroups.join('')+'</svg>';
  const view=$('vectorView');view.innerHTML=segmentedMarkup;view.style.display='block';output.style.display='none';
  for(const id of ['allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=false;
- $('segmentId').max=segmentGroups.length;
- $('segmentInfo').textContent=segmentGroups.length+' independently selectable connected pixel components (raster-exact SVG geometry).';
- setStatus('Segmented '+segmentGroups.length+' connected components. All visible. Individual geometric line segments are a future refinement.');
+ $('segmentId').max=eligible.length;
+ $('segmentInfo').textContent=eligible.length+' independently toggleable candidate geometric segments; IDs match numbered segment inventory.';
+ setStatus('Geometric segment SVG ready: '+eligible.length+' candidate segments.');
 }
 $('segment').onclick=buildSegments;
 function setAllSegments(visible){$('vectorView').querySelectorAll('[data-segment]').forEach(el=>el.style.display=visible?'':'none')}
 $('allOn').onclick=()=>setAllSegments(true);
 $('allOff').onclick=()=>setAllSegments(false);
 $('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView').querySelector('[data-segment="'+n+'"]');if(!el){setStatus('Segment ID not found.',true);return}el.style.display=el.style.display==='none'?'':'none'};
-$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.5-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.14-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 
 let numberedMarkup='',segmentInventory=null;
@@ -187,7 +168,7 @@ function countLineSegments(){
  }
  segmentInventory={eligible,rawCount:pieces.length,straight:straight.length,curved:curved.length,chains:chains.length,edgeCount:pixels.length};
  $('inventory').textContent='Raw fragments: '+pieces.length+' | Consolidated candidates: '+eligible.length+' | Straight: '+straight.length+' | Curved: '+curved.length+' | Traced chains: '+chains.length+' | Skeleton pixels: '+pixels.length+'. Counts are estimates from the current geometry detector.';
- $('numberSegments').disabled=eligible.length===0;$('cleanPreview').disabled=eligible.length===0;
+ $('numberSegments').disabled=eligible.length===0;$('cleanPreview').disabled=eligible.length===0;$('segment').disabled=eligible.length===0;
  setStatus('Segment inventory ready: '+eligible.length+' candidates. Review before numbering.');
  return segmentInventory;
 }
