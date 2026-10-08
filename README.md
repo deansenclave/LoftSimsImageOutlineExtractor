@@ -1,14 +1,12 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.4-redo — fidelity-first SVG conversion
+## v0.3.5-redo — SVG component visibility prototype
 
-This version isolates SVG fidelity, postponing numbering and path vectorization.
+Preserves v0.3.4-redo lossless embedded-image SVG workflow. After **SVG fidelity PASS**, select **Segment SVG** to build separate SVG groups from 4-connected dark foreground pixel components. Use Segment ID + Toggle segment or Show all / Hide all; export the current visibility state as SVG.
 
-1. Choose an image and **Extract outlines**. Optionally **Build single-line path**.
-2. Click **Convert displayed image to SVG**.
-3. The app embeds the exact current canvas PNG in an SVG image element and rasterizes it back to a canvas at original dimensions.
-4. It compares every RGBA pixel. **Download SVG** is enabled only if the pixel comparison reports zero mismatches.
+**Important limits:** this is an independently switchable **connected-pixel-component prototype**, not yet geometric centerline segmentation. Crossing lines may belong to the same component. Diagonal pixel connections may split into separate groups. The segmented representation thresholds pixels to black/white and therefore is **not guaranteed lossless**; the prior lossless SVG remains the fidelity reference. Do not treat this as accepted until visually tested.
 
-This is **lossless SVG packaging of raster pixels**, not editable vector paths. Enlarging it does not create new detail. True vector path reconstruction is a separate future step requiring its own fidelity comparison. Original user-validated v0.3.0 is preserved as branch `v0.3.0-rebuilt-working`.
+## Run
+Open index.html, choose image, Extract outlines, Convert displayed image to SVG, confirm PASS, then Segment SVG.
 
-Run by opening `index.html` locally. No build tools required. Browser acceptance test pending.
+The previously user-validated v0.3.4-redo is preserved as a branch.
