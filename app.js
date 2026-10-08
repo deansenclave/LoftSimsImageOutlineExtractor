@@ -65,7 +65,7 @@ function geometryMarks(chains,target){
 }
 let svgMarkup='';
 let segmentedMarkup='',segmentGroups=[];
-function clearSegments(){segmentInventory=null;$('countSegments').disabled=true;$('numberSegments').disabled=true;$('inventory').textContent='';$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
+function clearSegments(){numberJob++;if($('cancelNumber'))$('cancelNumber').disabled=true;if($('cleanPreview'))$('cleanPreview').disabled=true;segmentInventory=null;$('countSegments').disabled=true;$('numberSegments').disabled=true;$('inventory').textContent='';$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
 function buildSegments(){
  const w=output.width,h=output.height;if(!w||!h)return;
  const pixels=output.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data;
@@ -162,30 +162,43 @@ function countLineSegments(){
  }
  segmentInventory={eligible,straight:straight.length,curved:curved.length,chains:chains.length,edgeCount:pixels.length};
  $('inventory').textContent='Detected candidate segments: '+eligible.length+' | Straight: '+straight.length+' | Curved: '+curved.length+' | Traced chains: '+chains.length+' | Skeleton pixels: '+pixels.length+'. Counts are estimates from the current geometry detector.';
- $('numberSegments').disabled=eligible.length===0;
+ $('numberSegments').disabled=eligible.length===0;$('cleanPreview').disabled=eligible.length===0;
  setStatus('Segment inventory ready: '+eligible.length+' candidates. Review before numbering.');
  return segmentInventory;
 }
 $('countSegments').onclick=countLineSegments;
 
 let numberJob=0;
-$('cancelNumber').onclick=()=>{numberJob++;$('cancelNumber').disabled=true;$('numberSegments').disabled=false;setStatus('Numbering cancelled.')};
+let cleanMarkup='';
+const svgStart=(w,h,pad,scale)=>'<svg xmlns="http://www.w3.org/2000/svg" width="'+(w*scale+pad*2)+'" height="'+(h*scale+pad*2)+'" viewBox="0 0 '+(w*scale+pad*2)+' '+(h*scale+pad*2)+'"><rect width="100%" height="100%" fill="white"/>';
+const svgPath=(c,pad,scale)=>{if(c.length<2)return '';let d='M'+(pad+c[0].x*scale)+' '+(pad+c[0].y*scale);for(let j=1;j<c.length;j++)d+='L'+(pad+c[j].x*scale)+' '+(pad+c[j].y*scale);return '<path d="'+d+'" fill="none" stroke="#111" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>'};
+$('cleanPreview').onclick=async()=>{
+ if(!segmentInventory)return;
+ const job=++numberJob,eligible=segmentInventory.eligible,parts=[svgStart(W,H,120,4)],progress=$('numberProgress');
+ $('cleanPreview').disabled=true;$('cancelNumber').disabled=false;$('numberedDownload').disabled=true;progress.value=0;
+ for(let i=0;i<eligible.length;i++){
+  parts.push(svgPath(eligible[i].c,120,4));
+  if(i%50===49){progress.value=Math.round((i+1)/eligible.length*100);setStatus('Clean vector preview '+(i+1)+' / '+eligible.length);await yieldFrame();if(job!==numberJob)return}
+ }
+ if(job!==numberJob)return;
+ parts.push('</svg>');cleanMarkup=parts.join('');
+ const view=$('vectorView');view.innerHTML=cleanMarkup;view.style.display='block';output.style.display='none';
+ progress.value=100;$('cleanPreview').disabled=false;$('cancelNumber').disabled=true;
+ setStatus('Clean SVG preview ready: '+eligible.length+' candidate centerlines. No gray raster; visual validation required.');
+};
+
+$('cancelNumber').onclick=()=>{numberJob++;$('cancelNumber').disabled=true;$('numberSegments').disabled=!segmentInventory;$('cleanPreview').disabled=!segmentInventory;setStatus('Numbering cancelled.')};
 const yieldFrame=()=>new Promise(resolve=>setTimeout(resolve,0));
 async function numberLineSegments(){
  if(!segmentInventory){setStatus('Count line segments before numbering.',true);return}
  const job=++numberJob,eligible=segmentInventory.eligible,w=W,h=H;
  const scale=4,pad=120,ww=w*scale+pad*2,hh=h*scale+pad*2;
- const total=eligible.length,parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+ww+'" height="'+hh+'" viewBox="0 0 '+ww+' '+hh+'"><rect width="100%" height="100%" fill="white"/>'];
+ const total=eligible.length,parts=[svgStart(w,h,pad,scale)];
  const progress=$('numberProgress');progress.value=0;$('cancelNumber').disabled=false;$('numberSegments').disabled=true;$('numberedDownload').disabled=true;
  // Yield between bounded batches so Cancel and progress remain responsive.
  const update=async(n,stage)=>{progress.value=Math.round(n/Math.max(1,total)*100);setStatus(stage+' '+n+' / '+total);await yieldFrame();return job===numberJob};
  for(let i=0;i<total;i++){
-  const c=eligible[i].c;
-  if(c.length>1){
-   let d='M'+(pad+c[0].x*scale)+' '+(pad+c[0].y*scale);
-   for(let j=1;j<c.length;j++)d+='L'+(pad+c[j].x*scale)+' '+(pad+c[j].y*scale);
-   parts.push('<path d="'+d+'" fill="none" stroke="#111" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>');
-  }
+  parts.push(svgPath(eligible[i].c,pad,scale));
   if(i%50===49&&!(await update(i+1,'Drawing clean centerlines')))return;
  }
  if(!(await update(total,'Drawing clean centerlines')))return;
@@ -221,7 +234,7 @@ async function numberLineSegments(){
  setStatus('Numbering completed: '+total+' dots, '+placed+' labels placed, '+unplaced+' label placement failures.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.12-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.13-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
