@@ -172,26 +172,40 @@ function numberLineSegments(){
  const {eligible}=segmentInventory,w=W,h=H;
  // Order connected paths first; retain each path's natural traversal direction.
  // This avoids the previous global row-wise ordering of disconnected pieces.
- const target=$('target').value==='all'?Infinity:+$('target').value;
+ const target=Infinity; // Inventory-driven: number every detected candidate.
  const selected=target===Infinity?eligible:eligible.slice(0,target);
  const marks=selected.map(item=>item.c[Math.floor(item.c.length/2)]);
 
  // All geometry, dots and labels share original-image SVG coordinates.
  // The browser scales the complete SVG uniformly through viewBox.
- const base=output.toDataURL('image/png'),pad=24,ww=w+pad*2,hh=h+pad*2;
- const parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+(ww*4)+'" height="'+(hh*4)+'" viewBox="0 0 '+ww+' '+hh+'" style="max-width:none;height:auto"><rect width="100%" height="100%" fill="white"/>','<image href="'+base+'" x="'+pad+'" y="'+pad+'" width="'+w+'" height="'+h+'" image-rendering="pixelated"/>'];
- const boxes=[],font=Math.max(3,Math.min(8,Math.min(w,h)/140)),dot=Math.max(.65,font*.17),gap=font*.75;
- const overlaps=(x,y,width,height)=>boxes.some(b=>x<b.x+b.w+1&&x+width+1>b.x&&y<b.y+b.h+1&&y+height+1>b.y);
+
+ // v0.3.11: clean SVG centerline paths, not enlarged raster pixels.
+ // All detected candidates are numbered; segment inventory drives the count.
+ const scale=4,pad=120,ww=w*scale+pad*2,hh=h*scale+pad*2;
+ const parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+ww+'" height="'+hh+'" viewBox="0 0 '+ww+' '+hh+'"><rect width="100%" height="100%" fill="white"/>'];
+ // Trace every skeleton chain from inventory, including candidates outside the requested label cap.
+ for(const item of eligible){
+  const c=item.c;if(c.length<2)continue;
+  let d='M'+(pad+c[0].x*scale)+' '+(pad+c[0].y*scale);
+  for(let j=1;j<c.length;j++)d+='L'+(pad+c[j].x*scale)+' '+(pad+c[j].y*scale);
+  parts.push('<path d="'+d+'" fill="none" stroke="#111" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>');
+ }
+ const boxes=[],font=18,grid=24;
+ const overlaps=(x,y,width,height)=>boxes.some(b=>x<b.x+b.w+4&&x+width+4>b.x&&y<b.y+b.h+4&&y+height+4>b.y);
  let placed=0,unplaced=0;
  marks.forEach((p,i)=>{
-  const x=pad+p.x,y=pad+p.y,label=String(i+1),tw=label.length*font*.62+1,th=font*1.3;
-  parts.push('<circle cx="'+x+'" cy="'+y+'" r="'+dot+'" fill="#1477d2"/>');
+  const x=pad+p.x*scale,y=pad+p.y*scale,label=String(i+1),tw=label.length*11+8,th=23;
+  parts.push('<circle cx="'+x+'" cy="'+y+'" r="2.5" fill="#1477d2"/>');
   let found=null;
-  // Local offsets only; no leader lines, no remote label placement.
-  for(const sign of [-1,1])for(const step of [1,1.7,2.4]){
-   const cx=x,cy=y+sign*(gap+th*step),rx=cx-tw/2,ry=cy-th;
-   if(rx<1||rx+tw>ww-1||ry<1||ry+th>hh-1||overlaps(rx,ry,tw,th))continue;
-   found={cx,cy,rx,ry};break;
+  // Prefer nearby locations. Never draw leaders across the drawing.
+  for(let ring=1;ring<=8&&!found;ring++){
+   for(let k=-ring;k<=ring&&!found;k++){
+    for(const [dx,dy] of [[k,-ring],[k,ring],[-ring,k],[ring,k]]){
+     const cx=x+dx*grid,cy=y+dy*grid,rx=cx-tw/2,ry=cy-th;
+     if(rx<4||rx+tw>ww-4||ry<4||ry+th>hh-4||overlaps(rx,ry,tw,th))continue;
+     found={cx,cy,rx,ry};break;
+    }
+   }
   }
   if(!found){unplaced++;return}
   boxes.push({x:found.rx,y:found.ry,w:tw,h:th});placed++;
@@ -204,7 +218,7 @@ function numberLineSegments(){
  setStatus('Detected '+eligible.length+' candidate segments; labels placed '+placed+'; label placement failures '+unplaced+'; target omissions '+(eligible.length-selected.length)+'.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.10-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.11-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
