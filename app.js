@@ -167,58 +167,61 @@ function countLineSegments(){
  return segmentInventory;
 }
 $('countSegments').onclick=countLineSegments;
-function numberLineSegments(){
+
+let numberJob=0;
+$('cancelNumber').onclick=()=>{numberJob++;$('cancelNumber').disabled=true;$('numberSegments').disabled=false;setStatus('Numbering cancelled.')};
+const yieldFrame=()=>new Promise(resolve=>setTimeout(resolve,0));
+async function numberLineSegments(){
  if(!segmentInventory){setStatus('Count line segments before numbering.',true);return}
- const {eligible}=segmentInventory,w=W,h=H;
- // Order connected paths first; retain each path's natural traversal direction.
- // This avoids the previous global row-wise ordering of disconnected pieces.
- const target=Infinity; // Inventory-driven: number every detected candidate.
- const selected=target===Infinity?eligible:eligible.slice(0,target);
- const marks=selected.map(item=>item.c[Math.floor(item.c.length/2)]);
-
- // All geometry, dots and labels share original-image SVG coordinates.
- // The browser scales the complete SVG uniformly through viewBox.
-
- // v0.3.11: clean SVG centerline paths, not enlarged raster pixels.
- // All detected candidates are numbered; segment inventory drives the count.
+ const job=++numberJob,eligible=segmentInventory.eligible,w=W,h=H;
  const scale=4,pad=120,ww=w*scale+pad*2,hh=h*scale+pad*2;
- const parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+ww+'" height="'+hh+'" viewBox="0 0 '+ww+' '+hh+'"><rect width="100%" height="100%" fill="white"/>'];
- // Trace every skeleton chain from inventory, including candidates outside the requested label cap.
- for(const item of eligible){
-  const c=item.c;if(c.length<2)continue;
-  let d='M'+(pad+c[0].x*scale)+' '+(pad+c[0].y*scale);
-  for(let j=1;j<c.length;j++)d+='L'+(pad+c[j].x*scale)+' '+(pad+c[j].y*scale);
-  parts.push('<path d="'+d+'" fill="none" stroke="#111" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>');
+ const total=eligible.length,parts=['<svg xmlns="http://www.w3.org/2000/svg" width="'+ww+'" height="'+hh+'" viewBox="0 0 '+ww+' '+hh+'"><rect width="100%" height="100%" fill="white"/>'];
+ const progress=$('numberProgress');progress.value=0;$('cancelNumber').disabled=false;$('numberSegments').disabled=true;$('numberedDownload').disabled=true;
+ // Yield between bounded batches so Cancel and progress remain responsive.
+ const update=async(n,stage)=>{progress.value=Math.round(n/Math.max(1,total)*100);setStatus(stage+' '+n+' / '+total);await yieldFrame();return job===numberJob};
+ for(let i=0;i<total;i++){
+  const c=eligible[i].c;
+  if(c.length>1){
+   let d='M'+(pad+c[0].x*scale)+' '+(pad+c[0].y*scale);
+   for(let j=1;j<c.length;j++)d+='L'+(pad+c[j].x*scale)+' '+(pad+c[j].y*scale);
+   parts.push('<path d="'+d+'" fill="none" stroke="#111" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>');
+  }
+  if(i%50===49&&!(await update(i+1,'Drawing clean centerlines')))return;
  }
- const boxes=[],font=18,grid=24;
- const overlaps=(x,y,width,height)=>boxes.some(b=>x<b.x+b.w+4&&x+width+4>b.x&&y<b.y+b.h+4&&y+height+4>b.y);
+ if(!(await update(total,'Drawing clean centerlines')))return;
+ // Spatial occupancy index avoids comparing every label with every previous label.
+ const cell=32,occupied=new Map(),font=18,grid=24;
+ const cellsFor=(x,y,w,h)=>{const cells=[];for(let cy=Math.floor(y/cell);cy<=Math.floor((y+h)/cell);cy++)for(let cx=Math.floor(x/cell);cx<=Math.floor((x+w)/cell);cx++)cells.push(cx+','+cy);return cells};
+ const intersects=(a,b)=>a.x<b.x+b.w+4&&a.x+a.w+4>b.x&&a.y<b.y+b.h+4&&a.y+a.h+4>b.y;
+ const overlaps=box=>cellsFor(box.x-4,box.y-4,box.w+8,box.h+8).some(k=>(occupied.get(k)||[]).some(b=>intersects(box,b)));
+ const reserve=box=>{for(const k of cellsFor(box.x,box.y,box.w,box.h)){if(!occupied.has(k))occupied.set(k,[]);occupied.get(k).push(box)}};
  let placed=0,unplaced=0;
- marks.forEach((p,i)=>{
-  const x=pad+p.x*scale,y=pad+p.y*scale,label=String(i+1),tw=label.length*11+8,th=23;
+ for(let i=0;i<total;i++){
+  const c=eligible[i].c,p=c[Math.floor(c.length/2)],x=pad+p.x*scale,y=pad+p.y*scale,label=String(i+1),tw=label.length*11+8,th=23;
   parts.push('<circle cx="'+x+'" cy="'+y+'" r="2.5" fill="#1477d2"/>');
   let found=null;
-  // Prefer nearby locations. Never draw leaders across the drawing.
-  for(let ring=1;ring<=8&&!found;ring++){
-   for(let k=-ring;k<=ring&&!found;k++){
-    for(const [dx,dy] of [[k,-ring],[k,ring],[-ring,k],[ring,k]]){
-     const cx=x+dx*grid,cy=y+dy*grid,rx=cx-tw/2,ry=cy-th;
-     if(rx<4||rx+tw>ww-4||ry<4||ry+th>hh-4||overlaps(rx,ry,tw,th))continue;
-     found={cx,cy,rx,ry};break;
-    }
+  // Local placement only, without leader lines or unbounded searches.
+  for(let ring=1;ring<=5&&!found;ring++){
+   for(let k=-ring;k<=ring&&!found;k++)for(const [dx,dy] of [[k,-ring],[k,ring],[-ring,k],[ring,k]]){
+    const cx=x+dx*grid,cy=y+dy*grid,box={x:cx-tw/2,y:cy-th,w:tw,h:th};
+    if(box.x<4||box.x+tw>ww-4||box.y<4||box.y+th>hh-4||overlaps(box))continue;
+    found={cx,cy,box};break;
    }
   }
-  if(!found){unplaced++;return}
-  boxes.push({x:found.rx,y:found.ry,w:tw,h:th});placed++;
-  parts.push('<text x="'+found.cx+'" y="'+found.cy+'" font-size="'+font+'" font-family="Arial,sans-serif" fill="#1477d2" text-anchor="middle">'+label+'</text>');
- });
- parts.push('</svg>');numberedMarkup=parts.join('');
+  if(found){reserve(found.box);placed++;parts.push('<text x="'+found.cx+'" y="'+found.cy+'" font-size="'+font+'" font-family="Arial,sans-serif" fill="#1477d2" text-anchor="middle">'+label+'</text>')}
+  else unplaced++;
+  if(i%50===49&&!(await update(i+1,'Placing labels')))return;
+ }
+ if(!(await update(total,'Placing labels')))return;
+ parts.push('</svg>');
+ numberedMarkup=parts.join('');
  const view=$('vectorView');view.innerHTML=numberedMarkup;view.style.display='block';output.style.display='none';
- $('numberedDownload').disabled=false;
- $('segmentInfo').textContent='Detected '+eligible.length+' candidate geometric pieces; labels placed '+placed+'; placement failures '+unplaced+'. The underlying raster image is preserved, and all annotations share one SVG coordinate system; source raster remains pixelated at high zoom.';
- setStatus('Detected '+eligible.length+' candidate segments; labels placed '+placed+'; label placement failures '+unplaced+'; target omissions '+(eligible.length-selected.length)+'.',unplaced>0);
+ $('numberedDownload').disabled=false;$('cancelNumber').disabled=true;$('numberSegments').disabled=false;
+ $('segmentInfo').textContent='Detected '+total+' candidates; numbered dots '+total+'; labels placed '+placed+'; labels omitted '+unplaced+'. Clean vector centerlines are experimental.';
+ setStatus('Numbering completed: '+total+' dots, '+placed+' labels placed, '+unplaced+' label placement failures.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.11-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.12-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
