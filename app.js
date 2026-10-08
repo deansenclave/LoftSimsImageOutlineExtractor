@@ -65,7 +65,7 @@ function geometryMarks(chains,target){
 }
 let svgMarkup='';
 let segmentedMarkup='',segmentGroups=[];
-function clearSegments(){$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
+function clearSegments(){segmentInventory=null;$('countSegments').disabled=true;$('numberSegments').disabled=true;$('inventory').textContent='';$('numberSegments').disabled=true;$('numberedDownload').disabled=true;numberedMarkup='';segmentedMarkup='';segmentGroups=[];for(const id of ['segment','allOn','allOff','toggleSegment','segmentDownload'])$(id).disabled=true;$('segmentInfo').textContent=''}
 function buildSegments(){
  const w=output.width,h=output.height;if(!w||!h)return;
  const pixels=output.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data;
@@ -104,8 +104,8 @@ $('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView')
 $('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.5-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 
-let numberedMarkup='';
-function numberLineSegments(){
+let numberedMarkup='',segmentInventory=null;
+function countLineSegments(){
  if(!edge||!W||!H){setStatus('Extract outlines first.',true);return}
  const w=W,h=H,N=w*h,mask=new Uint8Array(edge),neighbors=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
  // Zhang-Suen thinning: collapse thick Sobel traces to single-pixel skeletons.
@@ -155,6 +155,21 @@ function numberLineSegments(){
  }
  const eligible=pieces.map(c=>{let len=0;for(let i=1;i<c.length;i++)len+=Math.hypot(c[i].x-c[i-1].x,c[i].y-c[i-1].y);return {c,len}}).filter(v=>v.len>0);
 
+ const straight=[],curved=[];
+ for(const item of eligible){const c=item.c,a=c[0],b=c[c.length-1];let maxDeviation=0;const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy);
+  for(const p of c){const dev=dist?Math.abs(dx*(a.y-p.y)-(a.x-p.x)*dy)/dist:Math.hypot(p.x-a.x,p.y-a.y);if(dev>maxDeviation)maxDeviation=dev}
+  (maxDeviation>Math.max(1.5,item.len*0.06)?curved:straight).push(item);
+ }
+ segmentInventory={eligible,straight:straight.length,curved:curved.length,chains:chains.length,edgeCount:pixels.length};
+ $('inventory').textContent='Detected candidate segments: '+eligible.length+' | Straight: '+straight.length+' | Curved: '+curved.length+' | Traced chains: '+chains.length+' | Skeleton pixels: '+pixels.length+'. Counts are estimates from the current geometry detector.';
+ $('numberSegments').disabled=eligible.length===0;
+ setStatus('Segment inventory ready: '+eligible.length+' candidates. Review before numbering.');
+ return segmentInventory;
+}
+$('countSegments').onclick=countLineSegments;
+function numberLineSegments(){
+ if(!segmentInventory){setStatus('Count line segments before numbering.',true);return}
+ const {eligible}=segmentInventory,w=W,h=H;
  // Order connected paths first; retain each path's natural traversal direction.
  // This avoids the previous global row-wise ordering of disconnected pieces.
  const target=$('target').value==='all'?Infinity:+$('target').value;
@@ -199,7 +214,7 @@ function numberLineSegments(){
  setStatus('Detected '+eligible.length+' candidate segments; labels placed '+placed+'; label placement failures '+unplaced+'; target omissions '+(eligible.length-selected.length)+'.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.8-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.9-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
@@ -216,7 +231,7 @@ trace.onclick=async()=>{
   const c=check.getContext('2d',{willReadFrequently:true});c.drawImage(loadedImage,0,0,width,height);
   const actual=c.getImageData(0,0,width,height).data,expected=original.data;
   let changed=0;for(let i=0;i<expected.length;i+=4)if(expected[i]!==actual[i]||expected[i+1]!==actual[i+1]||expected[i+2]!==actual[i+2]||expected[i+3]!==actual[i+3])changed++;
-  $('svgDownload').disabled=changed!==0;$('segment').disabled=changed!==0;$('numberSegments').disabled=changed!==0;
+  $('svgDownload').disabled=changed!==0;$('segment').disabled=changed!==0;$('countSegments').disabled=changed!==0;$('numberSegments').disabled=true;segmentInventory=null;$('inventory').textContent='';
   const view=$('vectorView');view.innerHTML=svgMarkup;view.style.display='block';
   output.style.display='none';
   setStatus(changed===0?'SVG fidelity PASS: '+width+'×'+height+' pixels, zero mismatches. SVG download enabled.':'SVG fidelity FAIL: '+changed+' mismatched pixels. SVG download disabled.',changed!==0);
