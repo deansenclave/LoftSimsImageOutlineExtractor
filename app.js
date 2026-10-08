@@ -82,7 +82,7 @@ function setAllSegments(visible){$('vectorView').querySelectorAll('[data-segment
 $('allOn').onclick=()=>setAllSegments(true);
 $('allOff').onclick=()=>setAllSegments(false);
 $('toggleSegment').onclick=()=>{const n=+$('segmentId').value,el=$('vectorView').querySelector('[data-segment="'+n+'"]');if(!el){setStatus('Segment ID not found.',true);return}el.style.display=el.style.display==='none'?'':'none'};
-$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.15-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('segmentDownload').onclick=()=>{if(!segmentedMarkup)return;const view=$('vectorView').querySelector('svg');const markup=new XMLSerializer().serializeToString(view);const blob=new Blob([markup],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.16-redo-segments.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 
 let numberedMarkup='',segmentInventory=null;
@@ -159,7 +159,51 @@ function countLineSegments(){
   }
   if(!merged)break;
  }
- const eligible=candidates.filter((v,i)=>alive[i]).sort((a,b)=>b.len-a.len).map((v,i)=>({...v,id:i+1}));
+ const preserved=candidates.filter((v,i)=>alive[i]);
+ // Build a segment adjacency graph by shared skeleton endpoints.
+ // Walk connected contours first; begin at a free endpoint when one exists.
+ const keyOf=p=>p.x+','+p.y;
+ const endpoints=new Map();
+ preserved.forEach((item,i)=>{for(const p of [item.c[0],item.c.at(-1)]){const k=keyOf(p);if(!endpoints.has(k))endpoints.set(k,[]);endpoints.get(k).push(i)}});
+ const endpointDegree=k=>(endpoints.get(k)||[]).length;
+ const pointOrder=(a,b)=>a.y-b.y||a.x-b.x;
+ const orderedIndices=preserved.map((_,i)=>i).sort((ia,ib)=>{
+  const a=preserved[ia].c,b=preserved[ib].c;
+  const pa=pointOrder(a[0],a.at(-1))<=0?a[0]:a.at(-1),pb=pointOrder(b[0],b.at(-1))<=0?b[0]:b.at(-1);
+  return pointOrder(pa,pb)||ia-ib;
+ });
+ const visited=new Uint8Array(preserved.length),ordered=[];
+ const emit=(idx,fromKey)=>{
+  visited[idx]=1;const item=preserved[idx],c=item.c;
+  const oriented=fromKey&&keyOf(c.at(-1))===fromKey?c.slice().reverse():c;
+  ordered.push({...item,c:oriented});
+  return keyOf(oriented.at(-1));
+ };
+ // Iterative depth-first walk avoids recursive stack overflow on large drawings.
+ function traverse(seed,fromKey){
+  const stack=[{idx:seed,fromKey}];
+  while(stack.length){
+   const next=stack.pop();if(visited[next.idx])continue;
+   const exit=emit(next.idx,next.fromKey);
+   const neighbors=(endpoints.get(exit)||[]).filter(i=>!visited[i]);
+   // Continue through an aligned neighbor first at junctions; otherwise stable coordinate order.
+   const c=ordered.at(-1).c,p=c.at(-1),prev=c[Math.max(0,c.length-4)],vx=p.x-prev.x,vy=p.y-prev.y,vlen=Math.hypot(vx,vy)||1;
+   neighbors.sort((ia,ib)=>{
+    const score=i=>{const q=preserved[i].c,other=keyOf(q[0])===exit?q[Math.min(q.length-1,3)]:q[Math.max(0,q.length-4)];return ((other.x-p.x)*vx+(other.y-p.y)*vy)/(Math.hypot(other.x-p.x,other.y-p.y)*vlen||1)};
+    return score(ia)-score(ib)||ib-ia;
+   });
+   for(const i of neighbors)stack.push({idx:i,fromKey:exit});
+  }
+ }
+ // Prefer free endpoints, then closed loops, then isolated segments.
+ for(const i of orderedIndices){
+  if(visited[i])continue;
+  const c=preserved[i].c,a=keyOf(c[0]),b=keyOf(c.at(-1));
+  if(endpointDegree(a)!==1&&endpointDegree(b)!==1)continue;
+  traverse(i,endpointDegree(a)===1?a:b);
+ }
+ for(const i of orderedIndices)if(!visited[i])traverse(i,null);
+ const eligible=ordered.map((item,i)=>({...item,id:i+1}));
 
  const straight=[],curved=[];
  for(const item of eligible){const c=item.c,a=c[0],b=c[c.length-1];let maxDeviation=0;const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy);
@@ -241,7 +285,7 @@ async function numberLineSegments(){
  setStatus('Numbering completed: '+total+' dots, '+placed+' labels placed, '+unplaced+' label placement failures.',unplaced>0);
 }
 $('numberSegments').onclick=numberLineSegments;
-$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.15-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('numberedDownload').onclick=()=>{if(!numberedMarkup)return;const url=URL.createObjectURL(new Blob([numberedMarkup],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download='loftsims-v0.3.16-redo-numbered.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 
 const svgEsc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Fidelity-first SVG: embed the exact displayed PNG pixels; no vector simplification.
