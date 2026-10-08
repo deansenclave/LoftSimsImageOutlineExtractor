@@ -1,11 +1,9 @@
 # LoftSims Image Outline Extractor
 
-## v0.3.9-redo — segment inventory before numbering
+## v0.3.10-redo — proportional SVG numbering
 
-Preserves prior image intake, outline extraction, single-line drawing, lossless SVG conversion, experimental component visibility, and numbering tools. New required sequence: **Extract outlines → Convert displayed image to SVG → SVG fidelity PASS → Count line segments → Review inventory → Number line segments**.
+Retains v0.3.9-redo segment inventory and prior capabilities. Numbered SVG now uses a single original-image coordinate system and a common viewBox for the image, dots and numbers. The exported SVG scales annotations together with image geometry. Removed long leader lines. Number labels are restricted to nearby above/below positions; if all local slots collide, the label is omitted and counted as a placement failure rather than drawn remotely.
 
-Inventory reports total detected candidate segments, approximate straight/curved classification, traced chains, and skeleton pixels. Counting uses the same geometric detector that supplies the numbering operation, so the candidate count and numbering source remain aligned. A fresh extraction or SVG conversion invalidates the previous inventory.
+**Known limitations:** Labels can still overlap underlying image lines; at high density some numbers will be omitted. Enlarging an embedded raster does not create vector centerlines or improve raster stroke fidelity. Browser visual acceptance testing pending. v0.3.9-redo remains a preserved branch.
 
-**Known limitations:** These are heuristic candidate counts, not guaranteed unique semantic segments. Straight/curve classification uses maximum deviation from a segment chord. The older v0.3.8 label renderer (including distant leader lines) remains available but is **not accepted**; this version focuses on counting, not visual layout correction. The lossless SVG baseline remains unchanged. Browser validation pending.
-
-Run locally by opening index.html; no build tools required.
+Run by opening index.html locally.
